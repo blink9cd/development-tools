@@ -1,0 +1,154 @@
+[project]
+name = "development-tools"
+version = "0.1.0"
+description = "Tools for working with a git workspace: a daily, verified backup of a checkout's un-pushed work to iCloud Drive"
+readme = "README.md"
+license = "AGPL-3.0-or-later"
+# The oldest interpreter the suites have been run on. The ruff and mypy targets below
+# follow it: a newer gate target would pass syntax and standard-library names that are an
+# error here.
+requires-python = ">=3.12"
+# Deliberately empty: every tool and library here is standard-library only at runtime.
+dependencies = []
+
+[project.optional-dependencies]
+# The property tests in git_workspace_backup/tests/ and the vendored libraries' suites.
+# Tests only: nothing at runtime imports it.
+test = ["hypothesis==6.165.10"]
+
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.format]
+# The Python blocks inside the Markdown docs are laid out by hand -- a call shown before
+# and after on a few lines, an API table aligned in columns -- and ruff's formatter would
+# reflow them into one argument per line. The docs keep their layout; every .py file is
+# still held to the formatter.
+exclude = ["*.md"]
+
+[tool.ruff.lint]
+# E4/E7/E9/F are ruff's classic default set, written out so the enabled rules are a
+# function of this file rather than of whichever ruff release is installed. PGH003 and
+# PGH004 flag a bare `# type: ignore` or `# noqa`, one that names no rule code. D adds the
+# docstring rules (pep257), minus D401's imperative-mood opinion, which flags valid
+# noun-phrase summaries.
+select = ["E4", "E7", "E9", "F", "PGH003", "PGH004", "D"]
+ignore = ["D401"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "pep257"
+
+[tool.ruff.lint.per-file-ignores]
+# Test method names say what each test does; a docstring per test would be noise.
+"**/test_*.py" = ["D"]
+
+[tool.mypy]
+python_version = "3.12"
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+# The backup and the libraries put these folders on sys.path at runtime, each from its own
+# file's location; mypy cannot see a runtime insert, so they are named here for it. Each
+# library's private src/ is put there by the library itself when it loads.
+mypy_path = [
+  "$MYPY_CONFIG_FILE_DIR/stdio_utf8",
+  "$MYPY_CONFIG_FILE_DIR/help_formatter",
+  "$MYPY_CONFIG_FILE_DIR/bounded_run",
+  "$MYPY_CONFIG_FILE_DIR/bounded_run/src",
+  "$MYPY_CONFIG_FILE_DIR/schedule_artifacts",
+  "$MYPY_CONFIG_FILE_DIR/schedule_artifacts/src",
+  "$MYPY_CONFIG_FILE_DIR/atomic_write",
+  "$MYPY_CONFIG_FILE_DIR/pyproject_config",
+  "$MYPY_CONFIG_FILE_DIR/live_pid_guard",
+]
+
+[tool.coverage.run]
+# Branch coverage, not line coverage: a line can run while one side of its condition
+# never does. The one runtime __main__ guard, git_workspace_backup.py's, carries its own
+# `# pragma: no cover`; the others sit in test files, which are run rather than measured.
+branch = true
+
+[tool.coverage.report]
+# `# pragma: only-on posix` marks a line only a POSIX host runs, and
+# `# pragma: only-on win32` one only Windows runs. Each is excluded on the other kind of
+# host alone, so both stay measured where they run. coverage.py's configuration can read
+# environment variables but not the platform, so it keys on OS: Windows sets it to
+# Windows_NT in every process and POSIX systems leave it unset, so a set OS reads as
+# Windows. With OS unset, ${OS-} is empty: the first pattern ends in (?!), which never
+# matches, and the second is plain. With OS set, the first matches, and the second would
+# need "win32" to run straight into "Windows_NT" across a word boundary, which cannot
+# happen. exclude_also adds to coverage.py's default patterns, so `# pragma: no cover`
+# keeps working.
+exclude_also = [
+  'pragma:\s*only-on\s+posix\b(?!${OS-})',
+  'pragma:\s*only-on\s+win32\b${OS-}',
+]
+
+# The tables below configure the gates run over this tree before it is published. They are
+# inert for anyone who only runs the tools or their tests.
+
+[tool.gate_cache]
+# check_all's verdict cache reads it: each variable here is folded into the cache key.
+env = ["WORKSPACE_BACKUP_OFFLINE"]
+
+[tool.prose_terms]
+# Shapes this repository's prose does not use: a citation of a document, a numbered
+# decision, or a numbered work item that the reader of this repository has no way to look
+# up. State the rule or the measured fact instead, or cite a doc that ships here. Each
+# entry waives itself: the declaration is not prose.
+#
+# Patterns rather than bare words where a word would trip this code: `item` is also an
+# AppleScript argv index, so only a number of two or more digits after it counts.
+terms = [
+  # prose: ignore[TECHNICAL_NOTES] the declaration itself
+  "TECHNICAL_NOTES",
+]
+
+[tool.prose_terms.patterns]
+# A decision's number: a capital D and one or two digits. Three or more is left legal,
+# because ruff's docstring rule codes (D401 above) have that shape.
+ruling-tag = '(?<![0-9A-Za-z_])(?-i:D)[1-9][0-9]?(?![0-9A-Za-z_])'
+# An instructions file by its file name: a bare word would also ban the plain plural "agents",
+# which a tool about launchd agents needs.
+agents-file = '(?<![0-9A-Za-z_])AGENTS\.md'  # prose: ignore[agents-file] the declaration itself
+# A path into a folder of plans and write-ups.
+plans-path = 'superpowers/(?:specs|plans)/'  # prose: ignore[plans-path] the declaration itself
+# A write-up cited by its kind.
+design-note = '(?<![0-9A-Za-z_])design\s+(?:note|doc)'  # prose: ignore[design-note] the declaration itself
+# A work item's number: two or more digits, so an argv index ("item 2 of argv") stays legal.
+item-tag = '(?<![0-9A-Za-z_])items?\s+[0-9]{2,}'
+# A task number, capitalized as a plan spells it.
+task-tag = '(?<![0-9A-Za-z_])(?-i:Task)\s+[0-9]'
+# A phase or a review round by its number, in digits or as a word.
+phase-round = '(?<![0-9A-Za-z_])(?:phase|round)s?\s+(?:[0-9]+|one|two|three|four|five|six|seven|eight|nine|ten)(?![0-9A-Za-z_])'
+
+[tool.pii_scan]
+# The license names its copyright holder, which is its purpose.
+exclude = ["LICENSE"]
+
+[tool.python_gate]
+# bounded_run ships two fixtures its live boundary tests launch, gc_child.py and
+# nest_child.py, and a human can run either by hand to watch the bound hold. Each is an
+# INPUT a test drives, not a module of the library -- and each does its work at import,
+# gc_child.py never exiting and nest_child.py waiting on it, so neither could be imported
+# by a paired test even in principle.
+exclude = ["bounded_run/samples"]
+
+[tool.samples_presence]
+# Libraries with no CLI: nothing in them runs by hand against a sample input.
+exempt = [
+  "stdio_utf8",
+  "help_formatter",
+  "schedule_artifacts",
+  "atomic_write",
+  "pyproject_config",
+  "live_pid_guard",
+]
+
+[tool.stdio_policy]
+# The whole tree, the vendored libraries included: a library is exactly where a stray
+# print() does not belong.
+paths = ["."]
+
+[tool.dep_audit]
+# Pinning checks only in the inner loop; the network audit is run on demand.
+offline = "skip"

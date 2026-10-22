@@ -1,0 +1,67 @@
+{
+  "archive_members": [
+    {
+      "name": "claude/settings.json",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "size": 2
+    }
+  ],
+  "bundles": [
+    {
+      "head": "1111111111111111111111111111111111111111",
+      "name": "workspace.bundle",
+      "refs": [
+        "refs/heads/main",
+        "refs/stash"
+      ],
+      "stashes": [
+        {
+          "message": "On main: an older stash entry",
+          "sha": "6666666666666666666666666666666666666666"
+        },
+        {
+          "message": "On main: the newest stash entry",
+          "sha": "7777777777777777777777777777777777777777"
+        }
+      ],
+      "worktree_heads": [
+        {
+          "name": "example-worktree",
+          "reachable": false,
+          "sha": "2222222222222222222222222222222222222222"
+        }
+      ]
+    }
+  ],
+  "complete": true,
+  "created": "2026-01-02T03:04:05+00:00",
+  "dirty_worktrees": [
+    {
+      "changed_paths": 3,
+      "path_name": "example-worktree"
+    }
+  ],
+  "failed": [],
+  "files": [
+    {
+      "name": "RESTORE.md",
+      "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+      "size": 1200
+    },
+    {
+      "name": "extras.zip",
+      "sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+      "size": 300
+    },
+    {
+      "name": "workspace.bundle",
+      "sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+      "size": 100000
+    }
+  ],
+  "machine": "fixture-mac",
+  "schema": 1,
+  "skipped_symlinks": [],
+  "tool": "workspace_backup",
+  "unclassified_ignored": []
+}

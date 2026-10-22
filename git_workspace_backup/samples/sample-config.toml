@@ -1,0 +1,13 @@
+[tool.workspace_backup]
+destination = "~/backup-sample"
+keep = 3
+extras = []
+regenerable = ["**/__pycache__"]
+claude_files = ["settings.json"]
+home_files = []
+memory_snapshot = false
+rearm_commands = [
+  "python tools/example_hooks.py --install",
+  "python <path to git_workspace_backup.py> --mode install --repo <path to your repo>",
+]
+setup_doc = "docs/EXAMPLE_SETUP.md"
