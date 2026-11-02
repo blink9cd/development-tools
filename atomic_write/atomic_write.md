@@ -5,9 +5,9 @@ read. A library, not a CLI: there is nothing to run.
 
 ## What it is for
 
-A file another process reads while its writer runs — a state file a later run
+A file another process reads while its writer runs (a state file a later run
 loads, a document a person or a crawler opens, a configuration a service reads at
-start — is exposed half-written by a truncate-and-refill, which surfaces as an
+start) is exposed half-written by a truncate-and-refill, which surfaces as an
 intermittent failure that never reproduces on its own.
 
 Writing beside the target and renaming closes that window: the old file stays
@@ -35,7 +35,7 @@ of the author happened to do that day, and the one with no cleanup stranded a
 `.tmp` beside committed data whenever a replace failed.
 
 Every caller shares `STAGING_SUFFIX`. What identifies a leftover is the target's
-own name, which sits in the middle of the staging name — so it still says what it
+own name, which sits in the middle of the staging name, so it still says what it
 was going to _be_, just not who was writing it. A per-caller suffix would put back
 into this module exactly the per-tool variation it exists to remove, and the
 cleanup here is wide enough (`BaseException`, so an interrupt too) that a leftover
@@ -99,12 +99,12 @@ lock.
   one filesystem; across a mount boundary it quietly becomes a copy, which is
   the very window this closes.
 - **`fsync` before the rename.** The rename's atomicity says nothing about
-  durability — a crash afterwards could otherwise publish an empty file under
+  durability: a crash afterward could otherwise publish an empty file under
   the target's name.
 - **The mode set on the descriptor.** `mkstemp` creates at 0600 and the rename
   carries that through, so without it a published file is readable by the
   account that wrote it alone.
-  Setting it on the descriptor rather than afterwards leaves no window in which
+  Setting it on the descriptor rather than afterward leaves no window in which
   the finished bytes sit on disk under the wrong mode. Windows has no POSIX mode
   bits, so none is set there; `os.fchmod` does not exist on it below Python
   3.13, and this project's floor is 3.12.
@@ -116,17 +116,17 @@ lock.
 
 A test that asserts the published mode must fail when the `fchmod` is deleted,
 and whether it does depends on how the staging file was created. This module
-stages through a **path-based** `os.open`, because `PRESERVE` needs a new file
+stages through a path-based `os.open`, because `PRESERVE` needs a new file
 to land where a plain write would have put it, and `mkstemp` takes no mode. A
 path-based open starts from 0666 and lets the umask reduce it, which under the
-usual 0022 lands on 0644 — the right answer for the wrong reason.
+usual 0022 lands on 0644: the right answer for the wrong reason.
 
 So the strict umask in `test_atomic_write.py` is load-bearing rather than
 belt-and-braces: measured, the mutant with the `fchmod` deleted passes at 0022
 and fails only at 0077. Do not relax it, and do not assert a published mode
 from a scratch directory that has not set one.
 
-One property here is deliberately **not** covered, because no filesystem test
+One property here is deliberately not covered, because no filesystem test
 can see it: the mode is set on the descriptor _before_ the bytes are written,
 so no window exists in which finished content sits under the wrong mode. Moving
 the `fchmod` after the write leaves the same end state and survives the suite.
@@ -135,13 +135,13 @@ It is held by the comment at the call, not by an assertion.
 ## Not in scope
 
 A writer that stages through a temporary path for a reason other than atomicity
-is deliberately **not** a caller:
+is deliberately not a caller:
 
 - one that stages its output and then decides, after validating it, whether to
-  install it at all — a stage-then-validate-then-install flow, not "write this
-  content";
+  install it at all, which is a stage-then-validate-then-install flow, not
+  "write this content";
 - one that stages a file to verify something about it, such as that it carries
-  no identity metadata, before moving it — the staging exists for the
+  no identity metadata, before moving it, where the staging exists for the
   verification, not for the atomicity;
 - one that writes every file of a multi-file change to a staging file first,
   proves the set, and only then replaces the targets in a crash-safe order. That

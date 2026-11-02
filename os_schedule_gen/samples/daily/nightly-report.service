@@ -1,0 +1,7 @@
+[Unit]
+Description=Scheduled job nightly-report
+
+[Service]
+Type=oneshot
+ExecStart="/opt/example/bin/report" "--out=/var/tmp/report dir"
+TimeoutStartSec=7200

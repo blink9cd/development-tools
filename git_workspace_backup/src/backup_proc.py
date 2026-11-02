@@ -1,7 +1,7 @@
 """Subprocess seam for workspace_backup: every external command runs bounded.
 
 The real runner delegates to the shared ``bounded_run`` library, which kills the whole
-process tree on expiry -- a bare ``subprocess.run(timeout=)`` kills only the direct child,
+process tree on expiry. A bare ``subprocess.run(timeout=)`` kills only the direct child,
 and launchd skips the next calendar firing while any part of a hung run is still alive.
 Neither a timeout nor a missing binary raises: both come back as an exit code a caller can
 record as one failed item.
@@ -14,7 +14,7 @@ import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-# bounded_run, the shared process-tree-killing runner, at ONE fixed place: its folder
+# bounded_run, the shared process-tree-killing runner, at one fixed place: its folder
 # directly under the repository root, two levels above this file's own folder. Appended,
 # as in git_workspace_backup.py, and for the same reason.
 sys.path.append(str(Path(__file__).resolve().parents[2] / "bounded_run"))

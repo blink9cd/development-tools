@@ -17,7 +17,7 @@ from pathlib import Path
 import _cli_case as cc
 
 import backup_launchd
-import schedule_artifacts
+import os_schedule_gen
 import git_workspace_backup as wb
 
 #: What install and its dry run say about which repository the one agent backs up.
@@ -96,8 +96,8 @@ class RepoOptionTests(cc.CliCase):
         # alone: one option and its value, and not one byte more.
         self.launchctl.prints = [backup_launchd.PRINT_ABSENT_RC, 0]
         self.assertEqual(self.main("--mode", "install"), 0)
-        before_the_option = schedule_artifacts.build_launchd_plist(
-            schedule_artifacts.DailySchedule(hour=6, minute=0),
+        before_the_option = os_schedule_gen.build_launchd_plist(
+            os_schedule_gen.DailySchedule(hour=6, minute=0),
             cc.FIXTURE_PYTHON,
             str(self.script),
             self.tree.home / wb.STATE_BASE_NAME,

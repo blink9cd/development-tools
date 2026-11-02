@@ -1,6 +1,6 @@
 """The deterministic Hypothesis profile every git_workspace_backup property suite loads.
 
-Deliberately NOT named ``test_*``, so the aggregator's discover skips it. Importing it
+Deliberately not named ``test_*``, so the aggregator's discover skips it. Importing it
 registers and loads the profile, so a suite imports it before defining any ``@given`` test:
 such a test snapshots its settings when it is decorated. One definition, so the property
 suites cannot drift onto different settings.

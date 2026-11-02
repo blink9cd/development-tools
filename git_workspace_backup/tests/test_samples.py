@@ -3,8 +3,8 @@
 
 A sample that has drifted from the code misleads the one reader it exists for, and nothing
 else notices. So ``expected-manifest.json`` must be byte for byte what the manifest writer
-emits for the manifest it parses to -- a schema change the sample does not follow fails here
--- and the RESTORE.md it renders must show what the samples README tells a reader to look
+emits for the manifest it parses to (a schema change the sample does not follow fails here),
+and the RESTORE.md it renders must show what the samples README tells a reader to look
 for. ``sample-config.toml`` must pass the configuration's own validation, against a fake home,
 and name exactly the archive members the sample manifest records.
 """

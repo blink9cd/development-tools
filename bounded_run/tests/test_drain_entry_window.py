@@ -3,14 +3,14 @@
 
 Once the spawn registers a child, the drain runs, and only inside the drain's wait is its own
 interrupt path in force (``_communicate_bounded``). A ``KeyboardInterrupt`` raised between the
-two -- at the drain's frame entry, or in the job containment that precedes the wait -- found the
+two (at the drain's frame entry, or in the job containment that precedes the wait) found the
 child registered but nothing in ``bounded_run`` killing it: only a caller whose handler calls
 ``kill_live_trees`` stopped it, and every other caller orphaned it.
 
 The window is provoked deterministically, never by timing: ``_start_contained``, the first call
 the drain makes, is patched to raise the interrupt, and no handler calls ``kill_live_trees``.
 The child is a parent that starts a grandchild in its own process group, so the test shows the
-WHOLE tree is gone, by pid, with a bounded wait. On Windows the child is still suspended when
+whole tree is gone, by pid, with a bounded wait. On Windows the child is still suspended when
 the containment that opens the drain runs, so it starts no grandchild there: the Windows test
 interrupts at once and shows the child itself is gone.
 """

@@ -3,20 +3,20 @@
 
 Why this exists
 ---------------
-A gate, a tool that checks a tree, usually carries standing config -- exclude lists,
-allow lists, exempt lists -- in a ``[tool.<name>]`` table in the repository's
+A gate, a tool that checks a tree, usually carries standing config (exclude lists,
+allow lists, exempt lists) in a ``[tool.<name>]`` table in the repository's
 ``pyproject.toml``. Reading it correctly is four separate decisions, and all four
 are easy to get subtly wrong in a way no test of the *gate* would notice:
 
-1. **Where to look.** The nearest ``pyproject.toml`` at or above the TARGET path,
+1. **Where to look.** The nearest ``pyproject.toml`` at or above the target path,
    never the process working directory, because the same files otherwise pass from
    one cwd and fail from another.
 2. **What absence means.** No pyproject, no table, or no key are all legitimately
    "no config" and must yield an empty list. Absence is not an error.
 3. **What malformed means.** A file that will not parse, or a key holding
-   something other than a list of strings, must STOP the gate. This is the half
+   something other than a list of strings, must stop the gate. This is the half
    that matters: a reader that treated unparseable config as empty would silently
-   shrink the set of things being checked and still print PASS -- the exact false
+   shrink the set of things being checked and still print PASS, the exact false
    clean a gate exists to prevent.
 4. **What the paths are relative to.** The directory of the pyproject that
    supplied them, so an entry means the same thing regardless of who is asking.
@@ -25,29 +25,31 @@ That is a policy, not a snippet, so it is decided once, here.
 
 What it owns, and what it deliberately does not
 -----------------------------------------------
-It owns **path-list keys**: given a table name and some key names, it returns each
+It owns path-list keys: given a table name and some key names, it returns each
 key's value as resolved :class:`~pathlib.Path` objects. The table name and the key
-names are both **parameters** -- there is nothing about any one consumer baked in,
-which is the property :func:`read_path_lists`'s tests pin by reading two different
-tables out of one document.
+names are both parameters, so nothing about any one consumer is baked in, which is
+the property :func:`read_path_lists`'s tests pin by reading two different tables
+out of one document.
 
-It also owns what such an entry MEANS once resolved, which is the half that drifts
+It also owns what such an entry means once resolved, which is the half that drifts
 most quietly because every tool re-decides it in passing:
 
-* :func:`is_under` -- an entry names a **subtree**, not one path. A tool that
-  compared for equality would silently walk into everything below a directory its
-  config excluded, and report PASS on files nobody meant to check.
-* :func:`dead_paths` -- an entry that no longer resolves is **stale config that
-  gates**, unless it was declared prospective. Without that, an allow/exempt list
-  keeps excusing folders that no longer exist, so the exclusion outlives the
-  reason for it and nothing ever says so.
+* :func:`is_under`: an entry names a subtree, not one path. A tool that compared
+  for equality would silently walk into everything below a directory its config
+  excluded, and report PASS on files nobody meant to check.
+* :func:`dead_paths`: an entry that no longer resolves is stale config that gates,
+  unless it was declared prospective. Without that, an allow/exempt list keeps
+  excusing folders that no longer exist, so the exclusion outlives the reason for
+  it and nothing ever says so.
 
-It does **not** own:
+It does not own:
 
 * **Scalar config.** A boolean marker key is read by whoever cares;
-  generalizing this module to "any value of any type" would trade a precise
-  contract for a dict of ``object`` the caller must re-validate anyway.
-* **The consumer's resolved shape.** A gate's own ``Config`` dataclass names ITS
+  :func:`read_tool_table` hands back the raw table, values exactly as ``tomllib``
+  parsed them, and validating a scalar there is the caller's job. Validating and
+  resolving values of every type here would trade the precise path-list contract
+  for checks each caller would have to repeat anyway.
+* **The consumer's resolved shape.** A gate's own ``Config`` dataclass names its
   keys (``allow`` / ``exempt`` / ``paths``) and stays with that gate. This module
   hands back a plain mapping and takes no view on what the keys mean.
 
@@ -56,8 +58,8 @@ table name, so the boundary above is the contract, not an apology for it.
 
 Entry point assumptions
 -----------------------
-Both filesystem touches are **injected** (``is_file`` / ``read_text``), so a
-consumer's tests can drive every branch -- including the unreadable-file one --
+Both filesystem touches are injected (``is_file`` / ``read_text``), so a
+consumer's tests can drive every branch, including the unreadable-file one,
 without a real tree, and this module performs no I/O of its own. It imports
 ``tomllib``, so it requires Python 3.11+. It has no other dependency, holds no
 state, and cannot fail at import time.
@@ -80,19 +82,19 @@ _TOOL_KEY = "tool"
 # seam, never let a black-box test touch the host.
 IsFileFn = Callable[[Path], bool]  # is this path an existing regular file?
 ReadTextFn = Callable[[Path], str]  # read a file's text, or raise
-# Does a configured path still resolve? The CALLER decides what that means -- is_dir
-# for a list of folders, exists for a mixed list -- because only it knows what kind
+# Does a configured path still resolve? The caller decides what that means (is_dir
+# for a list of folders, exists for a mixed list), because only it knows what kind
 # of thing its own config names.
 ExistsFn = Callable[[Path], bool]
 
 
 def default_is_file(path: Path) -> bool:
-    """The real :data:`IsFileFn` -- true when *path* is an existing regular file."""
+    """The real :data:`IsFileFn`: true when *path* is an existing regular file."""
     return path.is_file()
 
 
 def default_is_dir(path: Path) -> bool:
-    """The real :data:`ExistsFn` for folder config -- true when *path* is a directory."""
+    """The real :data:`ExistsFn` for folder config: true when *path* is a directory."""
     return path.is_dir()
 
 
@@ -101,7 +103,7 @@ def default_read_text(path: Path) -> str:
 
     The encoding is explicit and lives here once. Falling back to the platform
     default would make a pyproject holding a non-ASCII string readable on one
-    machine and a ``UnicodeDecodeError`` on another -- and since that error is
+    machine and a ``UnicodeDecodeError`` on another, and since that error is
     caught and re-raised as :class:`ConfigError`, the difference would surface as
     a gate that mysteriously exits 2 on one developer's box.
     """
@@ -113,7 +115,7 @@ class ConfigError(Exception):
 
     Raised for a pyproject that cannot be read or parsed, and for a key whose
     value is not a list of strings. Never raised for *absent* config, which is a
-    legitimate empty result -- the distinction between "no config" and "config I
+    legitimate empty result: the distinction between "no config" and "config I
     cannot interpret" is the whole point of the type.
     """
 
@@ -170,8 +172,8 @@ def _shown(pyproject: Path, start: Path, *, is_file: IsFileFn) -> Path:
     Every consumer prints a :class:`ConfigError` on stderr, so an absolute path there
     would carry the home directory into each gate's output. The walk only ever finds a
     file at or above that directory, so the relative form is always a run of ``..``
-    segments and the file name -- still the one file to edit, read against the very
-    target the caller passed. A FILE target's walk effectively begins in its parent, so
+    segments and the file name: still the one file to edit, read against the very
+    target the caller passed. A file target's walk effectively begins in its parent, so
     measuring from the file itself would name a sibling pyproject ``../pyproject.toml``,
     pointing one directory too high.
     """
@@ -197,7 +199,7 @@ def _parse(pyproject: Path, read_text: ReadTextFn, *, shown: Path) -> object:
 def _reason(exc: Exception) -> str:
     """*exc* as a diagnostic quotes it, without the absolute path an OSError carries.
 
-    ``str(OSError)`` appends the error's ``filename`` -- the absolute pyproject path --
+    ``str(OSError)`` appends the error's ``filename``, the absolute pyproject path,
     so an OSError contributes only its ``strerror``, or its type name when it has none.
     """
     if isinstance(exc, OSError):
@@ -208,8 +210,8 @@ def _reason(exc: Exception) -> str:
 def nearest(start: Path, *, is_file: IsFileFn) -> Path | None:
     """The nearest ``pyproject.toml`` at or above *start*, or ``None`` when there is none.
 
-    The walk with the parse taken off it, for a consumer that needs to know WHICH file
-    would answer before -- or without -- reading it. :func:`chain` needs exactly that:
+    The walk with the parse taken off it, for a consumer that needs to know which file
+    would answer before, or without, reading it. :func:`chain` needs exactly that:
     telling one source from another by identity is what keeps a declaration from being
     read, and judged stale, once per subject that happens to sit under it.
     """
@@ -224,7 +226,7 @@ def nearest(start: Path, *, is_file: IsFileFn) -> Path | None:
 def chain(start: Path, *, stop: Path, is_file: IsFileFn) -> tuple[Path, ...]:
     """Every ``pyproject.toml`` from *start* up to and including *stop*, nearest first.
 
-    For config that ACCUMULATES down a tree rather than being answered by one file --
+    For config that accumulates down a tree rather than being answered by one file:
     a nested project's declarations adding to what the checkout root declares instead
     of replacing them. Nearest first, because a nearer file is the more specific
     statement and a consumer merging these will want it to win.
@@ -239,7 +241,7 @@ def chain(start: Path, *, stop: Path, is_file: IsFileFn) -> tuple[Path, ...]:
     ceiling = stop.resolve()
     if here != ceiling and ceiling not in here.parents:
         return ()
-    # Cut the walk to the bound BEFORE testing anything, rather than breaking out of it
+    # Cut the walk to the bound before testing anything, rather than breaking out of it
     # partway: the guard above already proves the ceiling is on this list, so a loop that
     # could also end by running out would carry a branch nothing can reach.
     upward = [here, *here.parents]
@@ -256,20 +258,20 @@ def read_tool_table(
 ) -> tuple[Path, dict[str, object]] | None:
     """The nearest pyproject above *start* and its raw ``[tool.<table>]`` table.
 
-    The walk paired with the parse, for consumers whose keys are NOT path lists.
+    The walk paired with the parse, for consumers whose keys are not path lists.
     :func:`read_path_lists` answers "what paths does my table declare?"; a table
     holding sub-tables (a scope-keyed mapping) cannot be asked that and still needs
-    this identical policy -- nearest pyproject above the TARGET rather than the cwd,
-    absence is empty, malformed STOPS the gate. Handing the walk over is what keeps
+    this identical policy: nearest pyproject above the target rather than the cwd,
+    absence is empty, malformed stops the gate. Handing the walk over is what keeps
     that decision in one place instead of being re-made, and re-broken, per tool.
 
     Returns ``None`` when the walk finds no ``pyproject.toml`` at all, and
     ``(pyproject, {})`` when it finds one that declares no such table. Those two are
-    deliberately distinct: the caller needs the FILE in the second case, both as the
+    deliberately distinct: the caller needs the file in the second case, both as the
     directory its entries resolve against and to name in a diagnostic.
 
     Values come back exactly as ``tomllib`` parsed them. Validating their shape is
-    the caller's job, because only it knows what shape its own keys should have --
+    the caller's job, because only it knows what shape its own keys should have,
     which is the same boundary :func:`read_path_lists` draws by owning path lists
     and nothing else. A malformed or unreadable file raises :class:`ConfigError`.
     """
@@ -292,17 +294,17 @@ def read_path_lists(
     """Each of *keys* from ``[tool.<table>]`` in the nearest pyproject above *start*.
 
     Walks *start* and its ancestors (bounded by the finite parent chain) for a
-    ``pyproject.toml``; the FIRST one found supplies every key, in one walk and one
+    ``pyproject.toml``; the first one found supplies every key, in one walk and one
     parse. Each value is an optional list of path strings, resolved relative to
     that file's own directory.
 
     Every requested key is present in the result, mapped to ``[]`` when the
-    pyproject, the table, or the key is absent -- so a caller can index the mapping
+    pyproject, the table, or the key is absent, so a caller can index the mapping
     directly instead of guarding each lookup. A malformed/unreadable file, or a
     value that is not a list of strings, raises :class:`ConfigError`.
 
     Built on :func:`read_tool_table` rather than repeating its walk, so the two
-    entry points cannot drift over where config comes from -- the property that
+    entry points cannot drift over where config comes from: the property that
     would otherwise fail silently, since a walk that stopped somewhere else would
     still return a perfectly well-formed answer.
     """
@@ -342,13 +344,13 @@ def dead_paths(
     """Split *configured* entries that no longer resolve into ``(gating, absent)``.
 
     A configured path that has gone away is stale config and belongs in the first
-    (gating) list, so an allow/exempt/exclude list cannot rot silently -- the
+    (gating) list, so an allow/exempt/exclude list cannot rot silently: the
     exclusion would otherwise outlive whatever justified it, with nothing to say so.
 
     An entry also listed in *prospective* goes to the second (non-gating) list
     instead: that is the curated hatch for a path that is legitimately absent right
-    now -- gitignored, created on demand, or present in the primary checkout and not
-    in a linked worktree. It is still REPORTED, because an unexplained silence is
+    now: gitignored, created on demand, or present in the primary checkout and not
+    in a linked worktree. It is still reported, because an unexplained silence is
     how the first list stops being trusted. Both lists are sorted for a stable
     report.
     """

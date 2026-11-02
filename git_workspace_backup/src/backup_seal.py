@@ -1,8 +1,8 @@
 """Seal a staged snapshot: verify it by restoring into scratch of its own, then write its records.
 
 Kept apart from backup_run, which decides what a run comes to. A problem with what is being
-sealed -- a restore that does not verify, a file that cannot be hashed, a document that
-refuses to render, scratch that cannot be made or removed -- is a failed item on the snapshot,
+sealed (a restore that does not verify, a file that cannot be hashed, a document that
+refuses to render, scratch that cannot be made or removed) is a failed item on the snapshot,
 because the staged snapshot may be the only copy there is and is still promoted, marked
 incomplete. A problem writing the records themselves is not: an ``OSError`` from the atomic
 write of RESTORE.md or MANIFEST.json propagates, and the run fails, since a snapshot with no
@@ -14,7 +14,7 @@ unverified, and scratch that cannot be removed is a leak beside a verified one. 
 failed item, so the record says what went wrong.
 
 The records are RESTORE.md, then MANIFEST.json, written atomically. Every staged file is hashed
-first, and one that cannot be -- or a document that refuses to render -- joins the failed
+first, and one that cannot be, or a document that refuses to render, joins the failed
 items before ``complete`` is decided: nothing is left out of the manifest unrecorded, and the
 completeness RESTORE.md states is the manifest's. The document's entry and the manifest's
 bytes come from what was written, which is also what the run's read-back and prune compare.

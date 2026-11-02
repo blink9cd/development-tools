@@ -4,14 +4,14 @@ The conventions are test_properties.py's: a module-level ``@given`` ``test_fuzz_
 the ``# fuzz-target``, run by the TestCase at the bottom, with the shared deterministic
 profile loaded before it is defined. Kept out of that file, which is near the length cap.
 
-What it is FOR: backup_zip enumerates a whitelist entry by walking its root and pruning
+What it is for: backup_zip enumerates a whitelist entry by walking its root and pruning
 every directory ``pattern_reaches_beneath`` refuses. A refusal that is wrong drops files
-drift calls backed up, silently -- the one miss this tool exists to prevent. So the rule
+drift calls backed up, silently: the one miss this tool exists to prevent. So the rule
 must never refuse a directory that a matching path is, or lies beneath. Precision (that it
 does prune) is carried by test_drift.py and test_zip.py.
 
 Why two input pools. Independently drawn patterns, directories and tails rarely produce the
-case that matters most -- a pattern matching only beyond the directory, which must still be
+case that matters most: a pattern matching only beyond the directory, which must still be
 descended. Measured: 3 of 100 independent draws were that case, the property's own draws
 held none, and a rule that descends only into a directory the pattern already matches left
 this property green. The second pool builds each pattern from the directory and a tail, so

@@ -3,26 +3,26 @@
 
 Every snapshot is verified by restoring it, pruned only through a per-destination ledger,
 and confirmed uploaded by ``--mode status``. A handful of large files per snapshot is the
-shape iCloud syncs best. Rejected: restic, whose password is a second secret that must itself
-be backed up, and whose restore needs restic installed; an rsync mirror of ``.git``, thousands
-of churning small files, whose hardlinked snapshots iCloud uploads in full; and a bare remote
-in iCloud Drive, the same small files, covering no ignored file.
+shape iCloud syncs best. Rejected: restic, whose password is a second secret to back up and
+whose restore needs restic; an rsync mirror of ``.git``, thousands of churning small files,
+whose hardlinked snapshots iCloud uploads in full; and a bare remote in iCloud Drive, the
+same small files, covering no ignored file.
 
 Entry point assumptions: macOS, the standard library alone, run from the primary checkout
 unless ``--repo`` names one. The private modules live in ``src/`` and are importable by plain
 name once the bootstrap below has run.
 
-Every process-level fact main() reads -- home, clock, PATH lookup, uid, platform, streams,
-the command runner and launchd's waiter -- arrives in one :class:`Host`, and only the
+Every process-level fact main() reads (home, clock, PATH lookup, uid, platform, streams,
+the command runner and launchd's waiter) arrives in one :class:`Host`, and only the
 ``__main__`` guard builds the real one. main() has no default Host, so no caller can reach
 this machine's launchd, iCloud state or memory corpora by leaving an argument out.
 
 An option the chosen mode does not consume is refused, never ignored: ``uninstall
 --dry-run`` would otherwise uninstall, and ``install --keep`` would install an agent that goes
-on reading the configured keep. The configuration is the agent's source for everything but its
+on reading the configured keep. The configuration is the agent's source for everything but the
 destination, which install pins so a later edit cannot move it. Uninstall reads neither the
 checkout nor the configuration: an agent is no less worth removing because either is broken,
-and that is when someone most wants it gone.
+which is when someone most wants it gone.
 """
 
 from __future__ import annotations
@@ -39,17 +39,17 @@ from pathlib import Path
 from typing import TextIO
 
 _HERE = Path(__file__).resolve().parent
-# The shared libraries, at ONE fixed place each: their folders directly under the repository
+# The shared libraries, at one fixed place each: their folders directly under the repository
 # root, this folder's parent. Appended, so none can shadow src/ or the standard library; a
 # search of the parent directories would also take a same-named folder above the clone.
 sys.path += [
     str(_HERE.parent / _lib)
-    for _lib in ("stdio_utf8", "help_formatter", "schedule_artifacts")
+    for _lib in ("stdio_utf8", "help_formatter", "os_schedule_gen")
 ]
 sys.path.insert(0, str(_HERE / "src"))
 
 import help_formatter  # noqa: E402 - import follows the sys.path bootstrap above
-import schedule_artifacts  # noqa: E402 - same bootstrap
+import os_schedule_gen  # noqa: E402 - same bootstrap
 import stdio_utf8  # noqa: E402 - same bootstrap
 
 import backup_launchd  # noqa: E402 - a private src/ module; same bootstrap
@@ -93,7 +93,7 @@ BACKS_UP = (
     "repository replaces it."
 )
 #: Where --help says the agent's logs are: a home token, never this machine's home.
-_LOGS_SHOWN = schedule_artifacts.logs_dir(Path("$HOME", STATE_BASE_NAME))
+_LOGS_SHOWN = os_schedule_gen.logs_dir(Path("$HOME", STATE_BASE_NAME))
 #: The companion doc --help points at for the full exit and problem lists: named for this
 #: script, so the pointer follows a rename.
 _COMPANION_DOC = Path(__file__).with_suffix(".md").name
@@ -175,7 +175,7 @@ def build_parser() -> argparse.ArgumentParser:
             "Back the workspace up to iCloud Drive: git bundles plus a whitelisted zip, "
             "verified by restoring, pruned through a ledger, and confirmed uploaded."
         ),
-        formatter_class=help_formatter.ReqAwareDefaultsFormatter,
+        formatter_class=help_formatter.UnsetHidingFormatter,
         epilog=EPILOG,
     )
     parser.add_argument(
@@ -188,6 +188,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--if-due",
         action="store_true",
+        default=None,  # not False, so --help prints no default; each mode takes bool()
         help="run only, and not with --dry-run: do nothing when a complete snapshot was "
         "already taken today (what the agent runs).",
     )
@@ -201,19 +202,19 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help="run and status: complete snapshots to retain, in place of the configured "
-        "keep; the configured keep when unset, as by default (%(default)s).",
+        "keep; the configured keep when unset.",
     )
     parser.add_argument(
         "--destination",
         default=None,
         help="run, status and install: the destination directory, absolute or starting "
         "with ~/, in place of the configured one; the configured destination when "
-        "unset, as by default (%(default)s). "
-        "Install pins whichever it is into the agent.",
+        "unset. Install pins whichever it is into the agent.",
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
+        default=None,
         help="run and install only: print the plan and write nothing.",
     )
     parser.add_argument(
@@ -221,8 +222,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="every mode: the repository to back up, absolute or starting with ~/; a "
         "linked worktree means its primary checkout, and install bakes it into the agent. "
-        "When unset, as by default (%(default)s), the checkout this script sits in is "
-        "backed up.",
+        "When unset, the checkout this script sits in is backed up.",
     )
     return parser
 
@@ -246,7 +246,7 @@ def main(argv: "Sequence[str] | None", host: Host) -> int:
 
 def _consumer_row(args: argparse.Namespace) -> str:
     """The CONSUMED_OPTIONS row *args* is checked against: its mode, or the plan's row."""
-    if args.mode == _RUN_MODE and args.dry_run:
+    if args.mode == _RUN_MODE and bool(args.dry_run):
         return RUN_PLAN_ROW
     return str(args.mode)
 
@@ -257,7 +257,7 @@ def _unconsumed_options(
     """Each option given a value other than its default that its row does not consume.
 
     Compared with the default rather than tracked as "given", so an explicit value equal to
-    the default -- which changes nothing -- passes.
+    the default, which changes nothing, passes.
     """
     consumed = CONSUMED_OPTIONS[_consumer_row(args)]
     return [
@@ -281,7 +281,7 @@ def _checkable_actions(parser: argparse.ArgumentParser) -> list[argparse.Action]
 
 def _run_mode(args: argparse.Namespace, host: Host) -> int:
     """One snapshot, or its plan under --dry-run; run_backup's exit code, unchanged."""
-    _guard_state_base(host, create=not args.dry_run)
+    _guard_state_base(host, create=not bool(args.dry_run))
     roots, config = _configured(args, host)
     request = RunRequest(
         roots=roots,
@@ -289,8 +289,8 @@ def _run_mode(args: argparse.Namespace, host: Host) -> int:
         base=_state_base(host),
         tools_dir=memory_tools_dir(host.script),
         python=host.python,
-        if_due=args.if_due,
-        dry_run=args.dry_run,
+        if_due=bool(args.if_due),
+        dry_run=bool(args.dry_run),
         platform=host.platform,
     )
     deps = RunDeps(
@@ -318,10 +318,10 @@ def _install_mode(args: argparse.Namespace, host: Host) -> int:
     the resolved primary checkout. The destination, --destination's or the configured one, is
     pinned into the agent either way.
     """
-    schedule = schedule_artifacts.parse_daily_time(args.time)
+    schedule = os_schedule_gen.parse_daily_time(args.time)
     if schedule is None:
         raise _Refused(f"--time must be a 24-hour HH:MM clock time, got {args.time!r}")
-    _guard_state_base(host, create=not args.dry_run)
+    _guard_state_base(host, create=not bool(args.dry_run))
     roots, config = _configured(args, host)
     git_path = host.which(GIT)
     if git_path is None:
@@ -349,7 +349,7 @@ def _install_mode(args: argparse.Namespace, host: Host) -> int:
         spec,
         run=host.run,
         waiter=host.waiter,
-        dry_run=args.dry_run,
+        dry_run=bool(args.dry_run),
         out=host.out,
         err=host.err,
     )

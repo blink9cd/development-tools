@@ -5,7 +5,7 @@ The conventions are test_properties.py's: the ``# fuzz-target`` subject has a mo
 deterministic profile is loaded before any ``@given`` is defined. Kept out of that file,
 which is near the length cap.
 
-What it is FOR: a worktree head's name reaches verification from a manifest, and becomes a
+What it is for: a worktree head's name reaches verification from a manifest, and becomes a
 refspec handed to ``git fetch``. A name holding ``*`` makes that refspec a glob, which
 passes by fetching whatever worktree heads the bundle holds; other forbidden characters make
 git refuse it or read it differently. So a refspec is built only for a name git's own
@@ -70,7 +70,7 @@ class VerifyPropertiesRunUnderUnittestTest(unittest.TestCase):
     def test_both_sides_of_an_accepted_refspec_are_refs_git_accepts(self) -> None:
         """The regex restates the component rule, so it cannot see a rule about position.
 
-        A ref may not END in a dot, which no component rule expresses: ``x.`` is a valid
+        A ref may not end in a dot, which no component rule expresses: ``x.`` is a valid
         worktree name that was once built into a destination git refuses. So git itself
         judges both halves, for names that probe each rule's edge.
         """

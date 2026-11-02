@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Tests for live_pid_guard, against REAL processes wherever a pid is probed or signaled.
+"""Tests for live_pid_guard, against real processes wherever a pid is probed or signaled.
 
 A faked ``os.kill`` could prove only that calls were made. What the module promises is that a
 process seen gone is left alone and a survivor is really killed, and only a real process shows
-either -- so those cases run on every platform, each against that platform's own probe and kill.
+either, so those cases run on every platform, each against that platform's own probe and kill.
 The choice of signal is additionally pinned under a patched platform, because an exit code
 alone does not show which signal a kill sent.
 """
@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import live_pid_guard as lpg  # noqa: E402 - import follows the sys.path bootstrap above
 
 #: A child that records its own pid in the file the named variable points at, then sleeps well
-#: past every deadline here -- so one found gone was killed, not finished.
+#: past every deadline here, so one found gone was killed, not finished.
 _RECORDING_SLEEPER = (
     "import os, pathlib, sys, time; "
     "pathlib.Path(os.environ[sys.argv[1]]).write_text(str(os.getpid()), encoding='utf-8'); "
@@ -35,7 +35,7 @@ _RECORDING_SLEEPER = (
 #: A child that sleeps past every deadline here, recording nothing.
 _SLEEPER = [sys.executable, "-c", "import time; time.sleep(60)"]
 
-#: A reap bound for tests that WANT a live pid to be reported not-gone, so they do not spend
+#: A reap bound for tests that want a live pid to be reported not-gone, so they do not spend
 #: the module's full deadline polling it.
 _SHORT_DEADLINE_SECONDS = 0.3
 

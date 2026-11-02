@@ -3,13 +3,13 @@
 
 The tree is the fixture workspace and homes a build reads, from :func:`make_tree`.
 
-Deliberately NOT named ``test_*``, so the aggregator's discover skips it. Importing it puts
+Deliberately not named ``test_*``, so the aggregator's discover skips it. Importing it puts
 the tool folder on ``sys.path`` and imports ``git_workspace_backup``, whose bootstrap makes the
-private ``src/`` modules importable -- the one bootstrap every suite relies on.
+private ``src/`` modules importable: the one bootstrap every suite relies on.
 
 Every repository is created under a caller-owned temporary directory. Every fixture git
-command -- through ``git()`` here, or through the tool's own runner inside
-``isolated_git_env()`` -- runs with, and only with, this isolation:
+command, through ``git()`` here or through the tool's own runner inside
+``isolated_git_env()``, runs with, and only with, this isolation:
 
 - a fixed fake author and committer identity;
 - no global or system config (``GIT_CONFIG_GLOBAL`` at the null device, and
@@ -20,7 +20,7 @@ command -- through ``git()`` here, or through the tool's own runner inside
 - a discovery ceiling at the system temp dir, so a path outside every fixture repo never
   resolves to a work tree above it.
 
-The rest of the inherited environment -- ``PATH``, and so which ``git`` binary runs -- is
+The rest of the inherited environment (``PATH``, and so which ``git`` binary runs) is
 not isolated. Every name here is an obvious fake.
 """
 
@@ -72,7 +72,7 @@ FIXTURE_HOOKS_PATH = os.devnull
 
 #: Applied to os.environ for any test that runs real git, so the tool's own runner
 #: (which inherits the environment) sees the same isolation as the fixture helpers.
-#: Always applied AFTER the stripped variables are removed: its own GIT_CONFIG_* entries
+#: Always applied after the stripped variables are removed: its own GIT_CONFIG_* entries
 #: match the strip rule.
 ISOLATED_GIT_ENV = {
     "GIT_AUTHOR_NAME": "Fixture Author",
@@ -96,6 +96,11 @@ FIXTURE_TIMEOUT_S = 60.0
 #: One path component longer than any macOS filesystem accepts (255 bytes): a name no
 #: folder can have, and so never one this tool wrote.
 TOO_LONG_NAME = "2" * 300
+#: What a planted file holds, and the mtime it is backdated to, so that any write a test
+#: forbids changes one or the other however coarse the filesystem's clock. The mtime is
+#: 2001-09-09, long before any test runs.
+PLANTED_BYTES = b"fixture: never opened through a symlink\n"
+PLANTED_MTIME_NS = 1_000_000_000 * 1_000_000_000
 #: Programs a FakeRunner never hands to its real runner, whatever that runner is. A test
 #: that forgot a route must fail loudly rather than touch the host:
 #:
@@ -178,6 +183,19 @@ def add_commit(repo: Path, message: str) -> str:
     """Add an empty commit to *repo*'s current HEAD and return its sha."""
     git(repo, "commit", "--quiet", "--allow-empty", "-m", message)
     return git(repo, "rev-parse", "HEAD").strip()
+
+
+def plant_untouched_file(path: Path) -> None:
+    """Write :data:`PLANTED_BYTES` to *path* and backdate it to :data:`PLANTED_MTIME_NS`."""
+    path.write_bytes(PLANTED_BYTES)
+    os.utime(path, ns=(PLANTED_MTIME_NS, PLANTED_MTIME_NS))
+
+
+def file_fingerprint(path: Path) -> "tuple[bytes, int] | None":
+    """The regular file *path*'s bytes and mtime, or None when nothing is there."""
+    if not path.exists():
+        return None
+    return path.read_bytes(), path.stat().st_mtime_ns
 
 
 def failing_when(fragment: str, code: int = 1) -> backup_proc.RunCmd:
@@ -307,12 +325,12 @@ def make_tree(tmp: Path) -> TreeFixture:
     )
     git(workspace, "stash", "--quiet")
     (workspace / ".gitignore").write_text(
-        ".superpowers/\nnew_folder/\ncache/\n", encoding="utf-8", newline="\n"
+        ".notes/\nnew_folder/\ncache/\n", encoding="utf-8", newline="\n"
     )
     (workspace / "blob.bin").write_bytes(os.urandom(20000))
     git(workspace, "add", ".gitignore", "blob.bin")
     git(workspace, "commit", "--quiet", "-m", "content")
-    for folder in (".superpowers", "new_folder", "cache"):
+    for folder in (".notes", "new_folder", "cache"):
         (workspace / folder).mkdir()
         (workspace / folder / "f.md").write_text(folder, encoding="utf-8", newline="\n")
     git(workspace, "worktree", "add", "--quiet", "--detach", str(tmp / "wt"))
@@ -331,7 +349,7 @@ def make_tree(tmp: Path) -> TreeFixture:
             pyproject=workspace / "pyproject.toml",
             destination=tmp / "dest",
             keep=7,
-            extras=(".superpowers",),
+            extras=(".notes",),
             regenerable=("cache",),
             claude_files=("settings.json",),
             home_files=(".zshrc",),

@@ -2,18 +2,23 @@
 
 All but the live ``ps`` test run on every host. The loop takes its signal call, its signal
 numbers and its process table as seams and treats the numbers as opaque, so a recorder and
-scripted tables pin its ORDER -- freeze before walking, every stop before any kill -- with no
+scripted tables pin its order (freeze before walking, every stop before any kill) with no
 process at risk. The live nested-session test pins the real signals end to end.
 """
 
 from __future__ import annotations
 
 import os
+import signal
+import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from collections.abc import Iterator, Sequence
 from pathlib import Path
+from typing import Any
+from unittest import mock
 
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
@@ -23,10 +28,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 import boundedrun_posix_tree
 from boundedrun_posix_tree import ProcessRow, TreeKillSeams
 
-# The determinism convention: a profile registered at import, never an `@settings`
-# decorator, which a fuzzing run applying its own settings could not override.
-# deadline=None: a per-example wall-clock deadline measures machine load, not correctness.
-# too_slow is suppressed for the same
+# A deterministic Hypothesis run: a profile registered at import, never an `@settings`
+# decorator, which an exploring campaign runner could not override. deadline=None: a per-example
+# wall-clock deadline measures machine load, not correctness. too_slow is suppressed for the same
 # reason: measured failing here at 4 draws in 1.02 s, one draw alone 0.98 s, on a loaded machine.
 settings.register_profile(
     "fuzz_gate_deterministic",
@@ -49,6 +53,14 @@ _AMPLE_SECONDS = 60.0
 
 #: The log entry a scripted snapshot leaves, so a test reads signals and reads in one order.
 _SNAPSHOT = ("snapshot",)
+
+#: Real seconds a snapshot given 0.5 s may take to return on a loaded host: far past its
+#: bound and short reap grace, far short of the 60 s its stand-in child would hold a wait.
+_RETURN_CEILING_SECONDS = 20.0
+
+#: The signal that really ends a stand-in child: SIGKILL where it exists, else the
+#: Windows terminate that ``Popen.kill`` itself sends.
+_REAL_KILL = getattr(signal, "SIGKILL", signal.SIGTERM)
 
 
 def _row(pid: int, ppid: int, pgid: int, state: str = "S") -> ProcessRow:
@@ -147,7 +159,7 @@ class ParseProcessTableTests(unittest.TestCase):
 def test_fuzz_parse_process_table(text: str) -> None:
     """Parsing never raises, and every row it keeps carries non-negative ids.
 
-    The property for the ``# fuzz-target`` on ``parse_process_table``: the
+    The property test paired with the ``# fuzz-target`` on ``parse_process_table``: the
     kill runs on whatever ``ps`` printed, so no output may stop it before it signals anything.
     """
     for row in boundedrun_posix_tree.parse_process_table(text):
@@ -353,6 +365,56 @@ class TakeSnapshotTests(unittest.TestCase):
     def test_a_command_past_its_timeout_reads_as_none(self) -> None:
         argv = (sys.executable, "-c", "import time; time.sleep(60)")
         self.assertIsNone(boundedrun_posix_tree.take_snapshot(0.5, argv))
+
+    def test_a_command_the_kill_cannot_end_yet_is_abandoned_not_awaited(self) -> None:
+        # The regression: under heavy load macOS `ps` sat in an uninterruptible kernel wait
+        # for minutes, where SIGKILL cannot end it, and the snapshot's post-kill reap waited
+        # with no bound, inside a stop handler, so a stopped run hung.
+        # A Popen whose kill does nothing stands in for that process, deterministically.
+        _UnkillablePopen.started.clear()
+        self.addCleanup(_UnkillablePopen.end_every_child)
+        argv = (sys.executable, "-c", "import time; time.sleep(60)")
+        results: list[tuple[ProcessRow, ...] | None] = []
+        with mock.patch.object(subprocess, "Popen", _UnkillablePopen):
+            snapshot = threading.Thread(
+                target=lambda: results.append(
+                    boundedrun_posix_tree.take_snapshot(0.5, argv)
+                ),
+                daemon=True,
+            )
+            snapshot.start()
+            snapshot.join(timeout=_RETURN_CEILING_SECONDS)
+        self.assertFalse(
+            snapshot.is_alive(), "the snapshot waited on its unkillable ps"
+        )
+        self.assertEqual(results, [None])
+        self.assertTrue(_UnkillablePopen.started[0].kill_asked)
+
+
+class _UnkillablePopen(subprocess.Popen[str]):
+    """A real child whose ``kill`` is ignored, as a process in an uninterruptible wait ignores it."""
+
+    started: list[_UnkillablePopen] = []
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.kill_asked = False
+        _UnkillablePopen.started.append(self)
+
+    def kill(self) -> None:
+        """Record the ask and leave the child running."""
+        self.kill_asked = True
+
+    @classmethod
+    def end_every_child(cls) -> None:
+        """Really end each child the test started, so none outlives it."""
+        for child in cls.started:
+            if child.poll() is None:
+                child.send_signal(_REAL_KILL)
+            child.wait(timeout=_RETURN_CEILING_SECONDS)
+            for stream in (child.stdout, child.stderr):
+                if stream is not None:
+                    stream.close()
 
 
 if __name__ == "__main__":

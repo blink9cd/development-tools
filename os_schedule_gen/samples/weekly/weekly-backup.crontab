@@ -1,0 +1,1 @@
+15 3 * * 0 cd "/opt/example" && PATH="/usr/local/bin:/usr/bin:/bin" "/usr/bin/python3" /opt/example/backup.py --mode run

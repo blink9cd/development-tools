@@ -7,8 +7,8 @@ bridge, so no compiled helper ships. The script text is one constant: paths trav
 argv items after a ``--`` that ends osascript's own options, never interpolated into the text.
 
 The script answers ``null`` for a path it cannot reach, or whose keys it cannot read. That is
-measured rather than habit: Foundation answers both ubiquity keys for a MISSING path exactly as
-it does for a local file -- success, with no value -- so the keys alone would report a vanished
+measured rather than habit: Foundation answers both ubiquity keys for a missing path exactly as
+it does for a local file (success, with no value), so the keys alone would report a vanished
 snapshot as "not in iCloud", which status treats as healthy. A key read with no value is false.
 Only an answer of exactly one two-boolean entry per path is believed; a null entry, a non-zero
 exit (a timeout and a missing osascript included) or any other output is unreadable, never

@@ -2,8 +2,8 @@
 """RESTORE.md tells a second machine not to take this one's per-machine Claude files.
 
 A snapshot restores the machine it was taken on. The Claude files its archive holds, named
-from the manifest's archive members, can carry that machine's own facts -- scheduled agents,
-local paths -- so a machine set up beside it, rather than replacing it, chooses file by file
+from the manifest's archive members, can carry that machine's own facts (scheduled agents,
+local paths), so a machine set up beside it, rather than replacing it, chooses file by file
 what to place, and takes a machine identity of its own. The note runs nothing, and sits after
 the Files step whose ``claude/`` copy it qualifies, before the re-arm step. The opening names
 the machine that took the snapshot beside "Created".

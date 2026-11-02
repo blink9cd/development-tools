@@ -210,7 +210,7 @@ def _recorded(pid_file: Path) -> bool:
 
 
 def _child_tracked(pids: live_pid_guard.FixturePids) -> bool:
-    """Whether the grandchild is recorded AND the child is in `bounded_run`'s live set.
+    """Whether the grandchild is recorded and the child is in `bounded_run`'s live set.
 
     Only then can `kill_live_trees` reach the whole tree. The grandchild's record alone
     proves neither: the child is tracked a few bytecodes after `Popen` returns, and a

@@ -5,11 +5,11 @@ The conventions are test_properties.py's: every ``# fuzz-target`` subject has a 
 deterministic profile is loaded before any ``@given`` is defined. Kept out of that file,
 which is near the length cap.
 
-What they are FOR: a bundle is judged complete by comparing git's own listings, and a
+What they are for: a bundle is judged complete by comparing git's own listings, and a
 worktree head's sha is handed back to git as an argument. So each parser must never raise
-and must keep exactly the records of the shape git writes -- a full lowercase object id,
+and must keep exactly the records of the shape git writes (a full lowercase object id,
 never text that could read as an option; a ref name with no space or control character; a
-worktree name of one component -- from output mixed with anything else. Coverage is carried
+worktree name of one component) from output mixed with anything else. Coverage is carried
 by test_bundle.py.
 
 Each property compares the parser with the rule restated as a regular expression rather than
@@ -44,8 +44,8 @@ _REF_NAMES = st.text(
 )
 _NOISE = st.text(max_size=24)
 #: A ref name with one character git forbids inside it: a space, a tab, a control
-#: character or DEL. Measured: with only general text in these arms -- ASCII text included
-#: -- a mutant letting a space into a name left the ref and heads properties green, since
+#: character or DEL. Measured: with only general text in these arms, ASCII text included,
+#: a mutant letting a space into a name left the ref and heads properties green, since
 #: such text rarely puts one inside an otherwise well-formed record. Every name drawn here
 #: carries one by construction.
 _BROKEN_NAMES = st.builds(

@@ -1,4 +1,4 @@
-# `git_workspace_backup` — a daily, verified iCloud Drive backup of the workspace
+# `git_workspace_backup`: a daily, verified iCloud Drive backup of the workspace
 
 A remote holds only what was pushed to it, so every branch that was not, every stash, the
 gitignored-but-irreplaceable files and the auto-memory corpus still live on one disk. Once a day this tool copies the irreplaceable set into a destination folder, normally in
@@ -184,7 +184,7 @@ logged out, since the agent is a per-user LaunchAgent.
 
 | Argument | Required | Default | Description |
 | --- | --- | --- | --- |
-| `--mode MODE` | yes | — | `run` takes one snapshot; `install` and `uninstall` add or remove the daily LaunchAgent; `status` judges the destination's health. |
+| `--mode MODE` | yes | n/a | `run` takes one snapshot; `install` and `uninstall` add or remove the daily LaunchAgent; `status` judges the destination's health. |
 | `--if-due` | no | off | `run` only, and not with `--dry-run`: only record a skip when the ledger already holds a complete snapshot taken today. What the agent runs. |
 | `--time HH:MM` | no | `DEFAULT_TIME` in `src/backup_launchd.py`, which `--help` prints | `install` only: the daily run time, on a 24-hour clock. |
 | `--keep N` | no | unset: the configured `keep` | `run` and `status`: complete snapshots to retain, in place of the configured `keep`; at least 1. |
@@ -229,7 +229,7 @@ refuses the same way and still writes nothing. It then:
 
 1. creates the log directory and writes the agent's plist, atomically, under
    `$HOME/Library/LaunchAgents` (`launchd_plist_path` in
-   `../schedule_artifacts/schedule_artifacts.py`), named for `LABEL` in
+   `../os_schedule_gen/os_schedule_gen.py`), named for `LABEL` in
    `src/backup_launchd.py`;
 2. boots out any loaded copy, and polls until launchd reports the agent absent;
 3. bootstraps the plist, and polls until launchd reports the agent loaded, whatever bootstrap
@@ -247,7 +247,7 @@ The agent's `PATH` is git's directory followed by the system directories, since 
 agent with a minimal environment rather than a login shell's. Its output and errors go to
 `launchd.out.log` and `launchd.err.log` under `$HOME/.workspace_backup/logs`: the directory is
 `logs_dir`, and the two names are the ones `build_launchd_plist` writes into the plist, both in
-`../schedule_artifacts/schedule_artifacts.py`.
+`../os_schedule_gen/os_schedule_gen.py`.
 
 **What proves the install works.** The tests drive fakes of `launchctl` and `osascript`, so only
 a run that launchd itself starts, and that takes a snapshot, proves launchd can run Python and
@@ -262,8 +262,8 @@ log's path and the `launchctl print` command. A kickstart of the agent proves no
 already covered: every firing runs `--if-due`, which then only records a skip.
 
 `--mode uninstall` refuses while a backup run holds the run lock, for the same reason. A run lock
-it cannot open at all -- the tool's directory is a file, or the lock is unreadable, a FIFO or a
-symlink loop -- is one no run can hold either, since a run opens it read-write: uninstall prints
+it cannot open at all (the tool's directory is a file, or the lock is unreadable, a FIFO or a
+symlink loop) is one no run can hold either, since a run opens it read-write: uninstall prints
 one warning naming the lock and goes ahead, so a broken state directory never makes the agent
 impossible to remove. Install still refuses such a lock, because every run of the agent it would
 install fails at it. Otherwise uninstall boots the agent out, polls until launchd reports it
@@ -452,9 +452,11 @@ on it until one line in either list covers it.
 ## Restoring a snapshot
 
 Each snapshot's own `RESTORE.md` is the procedure, rendered from its manifest; the tool's
-round-trip test executes the blocks the renderer writes. **Nothing authenticates the copy you
-read.** It is read back from the destination, and whatever can write the bundles there can
-rewrite it too. So read every `sh` block before you paste or run it, and run none you do not
+round-trip test executes the blocks the renderer writes.
+
+Nothing authenticates the copy you read. It is read back from the destination, and whatever
+can write the bundles there can rewrite it too. So read every `sh` block before you paste or
+run it, and run none you do not
 understand. A mode that verifies a snapshot against what the tool recorded is planned, and
 not yet built.
 

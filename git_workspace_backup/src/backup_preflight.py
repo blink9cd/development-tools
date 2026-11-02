@@ -1,7 +1,7 @@
 """The CLI's refusals about the tool's own directory, made before a mode does anything.
 
 Two of them: a backup run holding the run lock, and a directory that is not this user's
-alone -- not a directory, not owned by the effective uid, or writable by anyone else. Run and
+alone: not a directory, not owned by the effective uid, or writable by anyone else. Run and
 install then make it owner-only, as everything the tool creates beneath it already is.
 
 Kept apart from the entry script, which only routes modes: each check here reads the state base

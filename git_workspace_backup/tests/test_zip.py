@@ -85,9 +85,9 @@ class ZipTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = Path(self.enterContext(tempfile.TemporaryDirectory()))
         self.workspace = self.tmp / "workspace"
-        (self.workspace / ".superpowers" / "sdd").mkdir(parents=True)
-        self._file(self.workspace / ".superpowers" / "sdd" / "report.md", "r")
-        self._file(self.workspace / ".superpowers" / "top.md", "t")
+        (self.workspace / ".notes" / "drafts").mkdir(parents=True)
+        self._file(self.workspace / ".notes" / "drafts" / "report.md", "r")
+        self._file(self.workspace / ".notes" / "top.md", "t")
         (self.workspace / "src").mkdir()
         self._file(self.workspace / "src" / "__mock.html", "m")
         self._file(self.workspace / "src" / "keep.py", "k")
@@ -118,15 +118,15 @@ class ZipTests(unittest.TestCase):
 
     def test_listed_files_land_under_their_prefix_with_matching_hashes(self) -> None:
         result = self._write(
-            bz.ZipSource("workspace", self.workspace, (".superpowers", "src/__*")),
+            bz.ZipSource("workspace", self.workspace, (".notes", "src/__*")),
             bz.ZipSource("home", self.home, (".zshrc",)),
         )
         names = [member.name for member in result.members]
         self.assertEqual(
             names,
             [
-                "workspace/.superpowers/sdd/report.md",
-                "workspace/.superpowers/top.md",
+                "workspace/.notes/drafts/report.md",
+                "workspace/.notes/top.md",
                 "workspace/src/__mock.html",
                 "home/.zshrc",
             ],
@@ -144,38 +144,34 @@ class ZipTests(unittest.TestCase):
         outside = self.tmp / "outside"
         (outside / "secret").mkdir(parents=True)
         self._file(outside / "secret" / "x", "x")
-        (self.workspace / ".superpowers" / "dirlink").symlink_to(outside / "secret")
-        (self.workspace / ".superpowers" / "filelink").symlink_to(
-            outside / "secret" / "x"
-        )
+        (self.workspace / ".notes" / "dirlink").symlink_to(outside / "secret")
+        (self.workspace / ".notes" / "filelink").symlink_to(outside / "secret" / "x")
         (self.home / ".zprofile").symlink_to(outside / "secret" / "x")
         result = self._write(
-            bz.ZipSource("workspace", self.workspace, (".superpowers",)),
+            bz.ZipSource("workspace", self.workspace, (".notes",)),
             bz.ZipSource("home", self.home, (".zprofile",)),
         )
         self.assertEqual(
             result.skipped_symlinks,
             (
                 "home/.zprofile",
-                "workspace/.superpowers/dirlink",
-                "workspace/.superpowers/filelink",
+                "workspace/.notes/dirlink",
+                "workspace/.notes/filelink",
             ),
         )
         self.assertNotIn("x", [Path(m.name).name for m in result.members])
         self.assertEqual([f.item for f in result.failed], ["home:.zprofile"])
 
     def test_special_files_are_skipped_and_duplicates_written_once(self) -> None:
-        _make_fifo(self.workspace / ".superpowers" / "pipe")
+        _make_fifo(self.workspace / ".notes" / "pipe")
         _make_fifo(self.home / ".fifo")
         result = self._write(
-            bz.ZipSource(
-                "workspace", self.workspace, (".superpowers", ".superpowers/top.md")
-            ),
+            bz.ZipSource("workspace", self.workspace, (".notes", ".notes/top.md")),
             bz.ZipSource("home", self.home, (".fifo",)),
         )
         names = [member.name for member in result.members]
-        self.assertEqual(names.count("workspace/.superpowers/top.md"), 1)
-        self.assertNotIn("workspace/.superpowers/pipe", names)
+        self.assertEqual(names.count("workspace/.notes/top.md"), 1)
+        self.assertNotIn("workspace/.notes/pipe", names)
         self.assertEqual([f.item for f in result.failed], ["home:.fifo"])
 
     def test_an_unreadable_file_is_a_failed_item(self) -> None:
@@ -253,16 +249,10 @@ class ZipTests(unittest.TestCase):
     def test_an_unreadable_directory_is_a_failed_item_and_its_siblings_are_archived(
         self,
     ) -> None:
-        self._lock(self.workspace / ".superpowers" / "sdd")
-        result = self._write(
-            bz.ZipSource("workspace", self.workspace, (".superpowers",))
-        )
-        self.assertEqual(
-            [m.name for m in result.members], ["workspace/.superpowers/top.md"]
-        )
-        self.assertEqual(
-            [f.item for f in result.failed], ["workspace/.superpowers/sdd"]
-        )
+        self._lock(self.workspace / ".notes" / "drafts")
+        result = self._write(bz.ZipSource("workspace", self.workspace, (".notes",)))
+        self.assertEqual([m.name for m in result.members], ["workspace/.notes/top.md"])
+        self.assertEqual([f.item for f in result.failed], ["workspace/.notes/drafts"])
         self.assertTrue(result.failed[0].reason.startswith(_UNREADABLE_DIRECTORY))
 
     def test_files_under_an_unreadable_directory_never_vanish_unrecorded(self) -> None:
@@ -392,7 +382,7 @@ class ZipTests(unittest.TestCase):
 
     def test_a_member_larger_than_any_read_chunk_is_archived_whole(self) -> None:
         # A single-chunk read would truncate the member, and its recorded hash would still
-        # match the truncated bytes -- so size, hash and bytes are all held to the whole file.
+        # match the truncated bytes, so size, hash and bytes are all held to the whole file.
         content = _non_repeating_bytes(_LARGER_THAN_ANY_READ_CHUNK)
         (self.home / "big").write_bytes(content)
         result = self._write(bz.ZipSource("home", self.home, ("big",)))

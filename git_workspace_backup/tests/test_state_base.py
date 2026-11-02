@@ -5,8 +5,8 @@ Staging holds a build in progress, so a state base another account can read expo
 backed-up file, and one it can write lets it plant what a run reads or writes. So a run and
 install create the base and every directory beneath it owner-only, and make an existing base
 so; run, install and status refuse one that is not a directory, not this user's, or writable
-by anyone else. The three files a run opens there by name -- the lock, the identity and the
-ledger -- are never opened through a symlink, and the ledger is read within a bound.
+by anyone else. The three files a run opens there by name (the lock, the identity and the
+ledger) are never opened through a symlink, and the ledger is read within a bound.
 """
 
 from __future__ import annotations
@@ -20,11 +20,12 @@ from pathlib import Path
 from unittest import mock
 
 import _cli_case as cc
+import _fixtures as fx
 
 import backup_launchd
 import backup_preflight
 import backup_ledger
-import schedule_artifacts
+import os_schedule_gen
 import git_workspace_backup as wb
 from backup_checkout import Refused
 from backup_machine import IDENTITY_NAME
@@ -69,7 +70,7 @@ class StateBaseTests(cc.CliCase):
     def test_install_makes_the_base_and_its_logs_owner_only(self) -> None:
         self.assertEqual(self.install(), 0, self.err.getvalue())
         self.assertEqual(_mode(self.base), _PRIVATE_DIR)
-        self.assertEqual(_mode(schedule_artifacts.logs_dir(self.base)), _PRIVATE_DIR)
+        self.assertEqual(_mode(os_schedule_gen.logs_dir(self.base)), _PRIVATE_DIR)
 
     def test_an_existing_base_others_can_read_is_made_owner_only(self) -> None:
         for argv in (("--mode", "run"), ("--mode", "install")):
@@ -238,12 +239,21 @@ class NoFollowTests(cc.CliCase):
         self.elsewhere.mkdir()
 
     def test_a_run_lock_that_is_a_symlink_is_never_opened_through(self) -> None:
+        # Followed, the take creates a missing target and opens and flocks an existing one,
+        # and the run goes on: each refusal, and each target left as it was, needs O_NOFOLLOW.
         self.base.mkdir(mode=_PRIVATE_DIR)
-        target = self.elsewhere / "planted.lock"
-        (self.base / LOCK_NAME).symlink_to(target)
-        self.assertEqual(self.main("--mode", "run"), 2)
-        self.assertIn("run lock", self.err.getvalue())
-        self.assertFalse(target.exists())
+        lock = self.base / LOCK_NAME
+        for present in (False, True):
+            with self.subTest(target_present=present):
+                target = self.elsewhere / f"planted-{present}.lock"
+                if present:
+                    fx.plant_untouched_file(target)
+                lock.unlink(missing_ok=True)
+                lock.symlink_to(target)
+                before = fx.file_fingerprint(target)
+                self.assertEqual(self.main("--mode", "run"), 2)
+                self.assertIn("run lock", self.err.getvalue())
+                self.assertEqual(fx.file_fingerprint(target), before)
 
     def test_an_identity_file_that_is_a_symlink_is_refused(self) -> None:
         self.base.mkdir(mode=_PRIVATE_DIR)

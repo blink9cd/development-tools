@@ -46,7 +46,7 @@ class PatternTests(unittest.TestCase):
             ("**/.*_cache", "utilities/t/.ruff_cache", True),
             ("?b", "ab", True),
             ("**", "anything/at/all", True),
-            (".superpowers", "projects/p/.superpowers", False),
+            (".notes", "projects/p/.notes", False),
         ]
         for pattern, path, expected in cases:
             with self.subTest(pattern=pattern, path=path):
@@ -65,17 +65,15 @@ class PatternTests(unittest.TestCase):
                 )
 
     def test_unclassified_keeps_only_paths_neither_list_matches(self) -> None:
-        ignored = (".superpowers", "new_folder", "u/t/__pycache__")
+        ignored = (".notes", "new_folder", "u/t/__pycache__")
         self.assertEqual(
-            bd.unclassified(
-                ignored, extras=[".superpowers"], regenerable=["**/__pycache__"]
-            ),
+            bd.unclassified(ignored, extras=[".notes"], regenerable=["**/__pycache__"]),
             ("new_folder",),
         )
 
     def test_double_star_components_never_backtrack(self) -> None:
         # A backtracking matcher tries every way to split the path among the ``**``
-        # components -- thousands of component matches here, and an effective hang at a few
+        # components: thousands of component matches here, and an effective hang at a few
         # dozen components. Bounded by one match per pattern component per path component.
         pattern = "**/" * 8 + "z"
         path = "/".join(["a"] * 8)
@@ -89,7 +87,7 @@ class PatternTests(unittest.TestCase):
             (".zshrc", "Documents", False),
             (".config/gh/hosts.yml", ".config", True),
             (".config/gh/hosts.yml", ".config/other", False),
-            (".superpowers", ".superpowers/sdd", True),
+            (".notes", ".notes/drafts", True),
             ("**/*.md", "any/depth", True),
             ("a/*/*.md", "a/locked", True),
             ("a/*/*.md", "a/locked/deeper", False),
@@ -181,7 +179,7 @@ class ListIgnoredTests(unittest.TestCase):
 
     def test_listing_never_rewrites_the_checkouts_index(self) -> None:
         # A stale stat makes a plain `git status` refresh and rewrite the index under
-        # index.lock -- the lock a commit the user is making at that moment needs.
+        # index.lock, the lock a commit the user is making at that moment needs.
         repo = self._repo()
         future = time.time() + _FUTURE_S
         os.utime(repo / "README.md", (future, future))

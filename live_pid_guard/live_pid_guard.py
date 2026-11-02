@@ -3,20 +3,20 @@
 The shared fixture ``bounded_run/samples/gc_child.py`` starts a grandchild, and neither process
 exits for an hour. A live test proving that a bound holds therefore owns a cleanup its
 assertions cannot see: were the tree kill to regress, an elapsed-time assertion would still pass
--- the bounded drain returns regardless -- while both processes ran on for that hour. This module is
+(the bounded drain returns regardless) while both processes ran on for that hour. This module is
 that cleanup, in the one shape that is safe against pid reuse:
 
-1. **Record.** :func:`record_fixture_pids` names two pid files in the ENVIRONMENT, which the
-   fixture reads. Not argv: a tool under test may launch the fixture as its own subprocess and
-   append flags of its own, which a positional hook would take for its pid files.
+1. **Record.** :func:`record_fixture_pids` names two pid files in the environment, which the
+   fixture reads. Not argv: a tool under test may launch the fixture as its own subprocess
+   and append flags of its own, which a positional hook would take for its pid files.
 2. **Probe early.** :meth:`FixturePids.probe_exits` polls each recorded pid right after the call
    under test, before any assertion can raise and skip it.
 3. **Clean up only what was not seen gone.** Leaving the block kills every recorded pid not seen
    gone. A pid seen gone is never signaled: by then it may belong to an unrelated process, and a
    probe made at cleanup time cannot tell the difference.
 
-The probe itself never signals. ``os.kill(pid, 0)`` is no probe on Windows -- every signal but
-the two console events becomes ``TerminateProcess`` -- so there a handle opened only to wait on
+The probe itself never signals. ``os.kill(pid, 0)`` is no probe on Windows, where every signal
+but the two console events becomes ``TerminateProcess``, so there a handle opened only to wait on
 is polled instead. Pure library: no CLI, and nothing runs at import.
 """
 
@@ -49,7 +49,7 @@ _CHILD_PID_FILE_NAME = "child.pid"
 _GRANDCHILD_PID_FILE_NAME = "grandchild.pid"
 
 #: What cleanup tolerates: no record or a partial one (the call failed before the child ran),
-#: and a process already gone -- ESRCH on POSIX, ERROR_INVALID_PARAMETER on Windows.
+#: and a process already gone (ESRCH on POSIX, ERROR_INVALID_PARAMETER on Windows).
 _NOTHING_TO_KILL = (ValueError, OSError)
 
 #: The lowest pid a fixture can record. ``os.kill`` reads 0 as the caller's own process group

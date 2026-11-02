@@ -1,0 +1,9 @@
+[Unit]
+Description=Weekly backup (example)
+
+[Service]
+Type=oneshot
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+ExecStart="/usr/bin/python3" /opt/example/backup.py --mode run
+WorkingDirectory=/opt/example
+TimeoutStartSec=2700

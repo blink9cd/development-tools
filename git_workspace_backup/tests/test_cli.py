@@ -64,6 +64,10 @@ class ParserTests(unittest.TestCase):
                 self.assertIn(token, text)
         # An unset override says what unset means rather than a bare "None".
         self.assertNotIn("(default: None)", text)
+        # Nor in an option's own words: "unset" already says it.
+        self.assertNotIn("(None)", text)
+        # An on/off flag shows no default either: absent means off, which its help says.
+        self.assertNotIn("(default: False)", text)
         # Nor does any sentence start with one.
         self.assertNotRegex(text, r"(?:^|[.;:]\s)None\b")
 
@@ -77,7 +81,7 @@ class ParserTests(unittest.TestCase):
         args = wb.build_parser().parse_args(list(backup_launchd.AGENT_ARGS))
         self.assertEqual(
             (args.mode, args.if_due, args.dry_run, args.keep, args.destination),
-            ("run", True, False, None, None),
+            ("run", True, None, None, None),
         )
 
     def test_mode_is_a_required_named_option(self) -> None:
@@ -176,7 +180,7 @@ class CliTests(cc.CliCase):
 
     def test_a_relative_destination_is_refused_before_anything_runs(self) -> None:
         # A relative path would name, and key the ledger of, a different directory from each
-        # working directory the CLI is started in -- the agent's included.
+        # working directory the CLI is started in, the agent's included.
         argv = ["--mode", "run", "--dry-run", "--destination", "fixture-relative/dest"]
         self.assertEqual(self.main(*argv), 2)
         self.assert_one_error_line("--destination")

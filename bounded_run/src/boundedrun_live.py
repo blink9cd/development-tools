@@ -1,7 +1,7 @@
 """The children ``bounded_run`` has started and not yet finished, so a caller can kill them all.
 
-Private to ``bounded_run``: it lives in that folder's ``src/``, and nothing outside that
-folder imports it. Its name carries the tool's prefix, so it cannot shadow another tool's
+Private to ``bounded_run``: it sits in that tool's own ``src/`` folder, so nothing outside the
+tool folder imports it. Its name carries the tool's prefix, so it cannot shadow another tool's
 module on ``sys.path``.
 
 Why a registry
@@ -9,7 +9,7 @@ Why a registry
 Every child starts in a session of its own (``start_new_session=True``), which is what lets a
 timeout kill its whole tree. The same choice puts it beyond a signal sent to the caller: a
 logout's SIGTERM, or a scheduler stopping the job, ends the caller and leaves every child
-running unattended -- and with the caller gone, any lock it held is free while they run. A
+running unattended, and with the caller gone, any lock it held is free while they run. A
 caller that catches such a signal needs the pids it cannot otherwise see; this module keeps
 them, and ``bounded_run.kill_live_trees`` kills each one's tree.
 

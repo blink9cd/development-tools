@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Test fixture: run ``gc_child.py`` through a NESTED ``run_bounded``, then wait on it.
+"""Test fixture: run ``gc_child.py`` through a nested ``run_bounded``, then wait on it.
 
-This is the shape an orchestrator has -- a tool running a tool that runs a third --
-and the shape a single process-group kill misses. ``run_bounded`` starts every child in a new
+This is the shape an orchestrator has (one tool running another, which runs a third) and the
+shape a single process-group kill misses. ``run_bounded`` starts every child in a new
 session, so ``gc_child.py`` and its grandchild lead a session of their own, apart from this
 process's. Killing this process's group alone leaves both running, still at work, with nothing
 left to wait on them.

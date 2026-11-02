@@ -1,6 +1,6 @@
 """Create one repository bundle and record what a restore of it must reproduce.
 
-``git bundle create --all`` records every ref under ``refs/`` -- branches, tags, the stash --
+``git bundle create --all`` records every ref under ``refs/`` (branches, tags, the stash)
 and each linked worktree's HEAD as ``worktrees/<name>/HEAD``. The refs present before
 bundling are compared with the bundle's own ``list-heads``, so a bundle that silently lost
 a ref is a failed item rather than a snapshot. A worktree head is recorded with whether a
@@ -11,7 +11,7 @@ bundle never carries. So each entry's commit is handed to ``bundle create`` as a
 revision, which packs its objects without naming them, and the entries are recorded in the
 bundle entry, oldest first, for a restore to store back.
 
-Every name git prints -- a ref, a worktree's name -- is data: recorded and compared, never
+Every name git prints, a ref or a worktree's name, is data: recorded and compared, never
 joined onto a filesystem path or handed to a shell. The parsers keep only records of the
 shape git writes, so a sha handed back to git is a full object id and never text that reads
 as an option. A git query that fails, times out or cannot start raises rather than reading
@@ -65,7 +65,7 @@ _HEX_DIGITS = frozenset("0123456789abcdef")
 #: git refuses a ref name holding a space (0x20), any control character below it, or DEL.
 _LOWEST_NAME_CODEPOINT = 0x21
 _DELETE_CODEPOINT = 0x7F
-#: ``--no-optional-locks`` stops status refreshing a stale index under ``index.lock`` -- the
+#: ``--no-optional-locks`` stops status refreshing a stale index under ``index.lock``, the
 #: lock a commit being made in that worktree needs. The explicit untracked mode counts
 #: untracked files even where ``status.showUntrackedFiles=no`` would hide them.
 _STATUS_ARGV = (
@@ -83,7 +83,7 @@ class BundleError(Exception):
 
 @dataclass(frozen=True)
 class BundleResult:
-    """A bundle entry, a failure, or neither -- an empty repository allowed to be skipped."""
+    """A bundle entry, a failure, or neither: an empty repository allowed to be skipped."""
 
     entry: "BundleEntry | None"
     failure: "FailedItem | None"
@@ -212,7 +212,7 @@ def create_bundle(
 ) -> BundleResult:
     """Bundle *repo* to ``snapshot/rel_name`` and describe what its restore must hold.
 
-    A repository with no refs is skipped -- neither entry nor failure -- unless
+    A repository with no refs is skipped, as neither entry nor failure, unless
     *require_refs*. An unsafe *rel_name* is a failure before any git command runs; a failed
     git query and a bundle missing a listed ref are failures too. A failure that leaves a
     bundle file behind names it with KEPT_BUNDLE_NOTE.
@@ -230,7 +230,7 @@ def create_bundle(
             )
         entry = _bundle_and_verify(repo, snapshot / rel_name, rel_name, refs, run=run)
     # OSError: the bundle's directory could not be made. It is this bundle's failure, not
-    # the run's -- the other repositories still get their bundles.
+    # the run's: the other repositories still get their bundles.
     except (BundleError, OSError) as exc:
         reason = _naming_a_kept_file(str(exc), snapshot, rel_name)
         return BundleResult(None, FailedItem(label, reason))
@@ -240,8 +240,8 @@ def create_bundle(
 def dirty_worktrees(repo: Path, *, run: RunCmd) -> tuple[DirtyWorktree, ...]:
     """Every worktree of *repo* with uncommitted changes, by directory name.
 
-    A worktree whose status cannot be read -- its directory is gone, or git fails or times
-    out there -- is listed with UNREADABLE_COUNT, never dropped or read as clean.
+    A worktree whose status cannot be read (its directory is gone, or git fails or times
+    out there) is listed with UNREADABLE_COUNT, never dropped or read as clean.
     BundleError when the listing itself fails or names no worktree, since *repo* is one.
     Needs git 2.36 or later, the first to accept ``worktree list -z``; an older git exits
     non-zero on it, which raises here rather than listing nothing.
@@ -301,7 +301,7 @@ def _naming_a_kept_file(reason: str, snapshot: Path, rel_name: str) -> str:
     """*reason*, plus the kept file's name when the failed bundle was written to disk.
 
     An explicit ``lstat`` that reads any error as "no kept file", rather than ``Path.is_file``:
-    3.11 and 3.12 raise for an error outside a short list -- a name too long, say -- and later
+    3.11 and 3.12 raise for an error outside a short list (a name too long, say), and later
     interpreters (3.14 measured) return False. Raised from here, it would make one bundle's
     failure the whole run's.
     """

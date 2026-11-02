@@ -245,7 +245,7 @@ class PruneTests(unittest.TestCase):
 
     def test_a_folder_that_cannot_be_examined_is_deferred_and_kept(self) -> None:
         # A destination that cannot be searched: stat of the destination itself succeeds,
-        # lstat of a folder inside it fails with EACCES -- neither absent nor present.
+        # lstat of a folder inside it fails with EACCES: neither absent nor present.
         self._snapshot("2026-09-01T060000")
         self.destination.chmod(0o600)
         self.addCleanup(self.destination.chmod, 0o700)

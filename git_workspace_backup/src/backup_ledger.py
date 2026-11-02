@@ -1,6 +1,6 @@
 """The per-destination ledger and last-run record, and where they live.
 
-State is keyed by destination -- a short hash of the destination path -- so a run against a
+State is keyed by destination, a short hash of the destination path, so a run against a
 scratch destination can never overwrite the real destination's record. The ledger is the
 authority prune deletes by, so its parser refuses any entry name that is not one plain path
 component: a name holding ``/`` or ``..`` could otherwise point a deletion outside the
@@ -86,9 +86,9 @@ def parse_ledger(data: bytes) -> "Ledger | None":
 def load_ledger(state: Path) -> Ledger:
     """The ledger under *state*; empty when absent, LedgerError when present but not ours.
 
-    Read as :func:`_read_state_file` reads it, so an OSError for one that cannot be read --
-    a symlink or a directory in its place, more than ``STATE_READ_LIMIT`` bytes, no
-    permission -- propagates to the caller.
+    Read as :func:`_read_state_file` reads it, so an OSError for one that cannot be read (a
+    symlink or a directory in its place, more than ``STATE_READ_LIMIT`` bytes, no
+    permission) propagates to the caller.
     """
     path = state / LEDGER_NAME
     data = _read_state_file(path)

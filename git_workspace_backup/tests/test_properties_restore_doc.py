@@ -8,9 +8,9 @@ The conventions are test_properties.py's: every ``# fuzz-target`` subject has a 
 deterministic profile is loaded before any ``@given`` is defined. Coverage is carried by
 test_restore_doc.py.
 
-What they are FOR: only an ``sh`` fence in RESTORE.md is ever run. So the extractor must
-return exactly the bodies of well-formed ``sh`` fences -- a fence left open, or closed by a
-line that is not exactly the marker, must not swallow the blocks after it -- and the renderer
+What they are for: only an ``sh`` fence in RESTORE.md is ever run. So the extractor must
+return exactly the bodies of well-formed ``sh`` fences (a fence left open, or closed by a
+line that is not exactly the marker, must not swallow the blocks after it), and the renderer
 must never let a manifest value change which fences exist, send a restore outside its root,
 or give two blocks write targets where one lies within the other.
 
@@ -176,7 +176,7 @@ def _scanned_sh_bodies(lines: "list[str]") -> tuple[str, ...]:
     """The extraction rule, restated as a scan over *lines*.
 
     An opener is a line that is exactly ```sh. The first later line beginning with ``` ends
-    its block when it is exactly ```; any other such line -- or none -- yields nothing from
+    its block when it is exactly ```; any other such line, or none, yields nothing from
     that opener, and the scan resumes on the line after it.
     """
     bodies: list[str] = []
@@ -198,7 +198,7 @@ def _scanned_sh_bodies(lines: "list[str]") -> tuple[str, ...]:
 def _is_beneath_its_root(relative: str) -> bool:
     """Whether *relative*, joined onto a root directory, names a path strictly beneath it.
 
-    Judged by component, so ``..a`` -- an ordinary directory name -- is beneath its root.
+    Judged by component, so ``..a``, an ordinary directory name, is beneath its root.
     """
     normalized = posixpath.normpath(relative)
     return (

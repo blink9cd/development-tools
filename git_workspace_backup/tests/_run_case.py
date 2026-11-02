@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The run suites' shared case: a fixture tree, a temp tool base, and one run's seams.
 
-Deliberately NOT named ``test_*``, so the aggregator's discover skips it.
+Deliberately not named ``test_*``, so the aggregator's discover skips it.
 
 Nothing a run touches belongs to the host. The tool base, its state, the destination and the
 system temp dir that verification restores into all sit in the case's own temp directory;

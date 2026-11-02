@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Fixtures shared by more than one of schedule_artifacts' grouped suites.
+"""Fixtures shared by more than one of os_schedule_gen's grouped suites.
 
-Deliberately NOT named ``test_*``: it holds no test cases, and the aggregator's
+Deliberately not named ``test_*``: it holds no test cases, and the aggregator's
 ``discover`` pattern must not try to load it as one. Anything used by a single suite
-stays in that suite -- only what genuinely crosses suite boundaries lives here.
+stays in that suite; only what genuinely crosses suite boundaries lives here.
 
 Nothing here touches the filesystem: every subject in this library is a pure
 function, so its fixtures are plain data.
@@ -15,8 +15,8 @@ from datetime import date
 
 # One row per weekday: the token each backend's schedule form must carry, plus a real
 # date falling on that weekday. Authored independently of the production maps, and every
-# row is cross-checked below against datetime's OWN reckoning (_DAYS[ref.weekday()] and
-# ref.isoweekday()) -- an oracle neither this table nor the production code derives from.
+# row is cross-checked below against datetime's own reckoning (_DAYS[ref.weekday()] and
+# ref.isoweekday()), an oracle neither this table nor the production code derives from.
 # That is what makes this a real check rather than a restatement: an off-by-one in any
 # single map is caught instead of being mirrored here.
 SCHEDULE_FORMS: tuple[tuple[str, date, str, str, int], ...] = (
@@ -31,7 +31,7 @@ SCHEDULE_FORMS: tuple[tuple[str, date, str, str, int], ...] = (
 )
 
 FAKE_PYTHON = "/usr/bin/python3"
-FAKE_SCRIPT = "/opt/kit/utilities/gate_tree_sweep/gate_tree_sweep.py"
+FAKE_SCRIPT = "/opt/example/sweep/weekly_sweep.py"
 # The register-time PATH the POSIX backends bake in. The third entry is the shape that
 # makes the bake necessary at all: a user-local bin dir a scheduler would never inherit.
 FAKE_PATH = "/usr/local/bin:/usr/bin:/opt/node/bin"

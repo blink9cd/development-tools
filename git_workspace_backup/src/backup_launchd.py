@@ -1,20 +1,20 @@
 """Install and uninstall the daily LaunchAgent, reading its state back from launchd.
 
-The plist comes from schedule_artifacts, the shared scheduler-artifact generator, with this
+The plist comes from os_schedule_gen, the shared scheduler-artifact generator, with this
 agent's label, ``--mode run --if-due``, the destination install resolved, and ``RunAtLoad``.
 Pinning the destination means a later edit to the configuration cannot move where the agent
 writes; what it backs up is still read from the configuration on every run. No calendar firing
 survives a power-off, only a sleep, so the load-time firing covers a day the Mac was off at the
 scheduled time, and ``--if-due`` makes that firing a no-op on a day already covered. Every host
-fact the plist bakes in -- the interpreter, the script, git's location, the uid, the destination
--- arrives in an AgentSpec; this module reads none itself.
+fact the plist bakes in (the interpreter, the script, git's location, the uid, the
+destination) arrives in an AgentSpec; this module reads none itself.
 
 ``launchctl print`` has three answers, not two: exit 0 is loaded, 113 is absent, and anything
-else -- a timeout and a missing launchctl included -- is unknown. An unknown answer ends a wait
+else, a timeout and a missing launchctl included, is unknown. An unknown answer ends a wait
 at once and fails the operation; it is never taken for either settled answer.
 
 ``bootout`` is not instantaneous, so install polls for "absent" before bootstrapping the same
-label, then polls for "loaded" to confirm -- whatever bootstrap exited, since one racing the old
+label, then polls for "loaded" to confirm, whatever bootstrap exited, since one racing the old
 instance's teardown can fail while launchd goes on to load the agent. The plist is written
 before anything is unloaded, so no failure leaves the machine with the old agent gone and no
 plist; each failure to load says so, and that re-running install recovers. Uninstall removes
@@ -35,11 +35,11 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import TextIO
 
-# schedule_artifacts, the shared scheduler-artifact renderer, at ONE fixed place: its folder
+# os_schedule_gen, the shared scheduler-artifact renderer, at one fixed place: its folder
 # directly under the repository root, as backup_proc.py places bounded_run.
-sys.path.append(str(Path(__file__).resolve().parents[2] / "schedule_artifacts"))
+sys.path.append(str(Path(__file__).resolve().parents[2] / "os_schedule_gen"))
 
-import schedule_artifacts  # noqa: E402 - import follows the sys.path bootstrap above
+import os_schedule_gen  # noqa: E402 - import follows the sys.path bootstrap above
 
 from backup_agent_args import (  # noqa: E402 - same bootstrap block
     AgentArgsError,
@@ -112,7 +112,7 @@ class AgentSpec:
     state_base: Path
     python: str
     script: Path
-    schedule: schedule_artifacts.DailySchedule
+    schedule: os_schedule_gen.DailySchedule
     git_path: str
     uid: int
     #: The destination every firing names with ``--destination``, resolved at install.
@@ -142,7 +142,7 @@ class AgentReading:
 
 def plist_path(home: Path) -> Path:
     """Where this agent's plist lives under *home*."""
-    return schedule_artifacts.launchd_plist_path(home, label=LABEL)
+    return os_schedule_gen.launchd_plist_path(home, label=LABEL)
 
 
 def baked_path(git_path: str) -> str:
@@ -157,7 +157,7 @@ def baked_path(git_path: str) -> str:
 
 def render_plist(spec: AgentSpec) -> bytes:
     """The plist bytes for *spec*: daily at its time and at load, every firing ``--if-due``."""
-    return schedule_artifacts.build_launchd_plist(
+    return os_schedule_gen.build_launchd_plist(
         spec.schedule,
         spec.python,
         str(spec.script),
@@ -267,8 +267,8 @@ def uninstall(
     Once removed, says which repository the agent was backing up, read from its own plist
     before anything else runs, and when *named_repo* is another, says that too: there is one
     agent per account, so it is removed all the same. Snapshots and recorded state are never
-    touched. Exit 2 when launchd still reports the agent or answers unknown -- the plist is
-    kept for a retry -- or the plist cannot be removed.
+    touched. Exit 2 when launchd still reports the agent or answers unknown (the plist is
+    kept for a retry), or when the plist cannot be removed.
     """
     target = plist_path(home)
     try:
@@ -344,7 +344,7 @@ def _spec_problem(spec: AgentSpec) -> "str | None":
 def _write_plist(spec: AgentSpec, target: Path, data: bytes) -> "str | None":
     """Create the log directory, then write the plist atomically; what failed, or None."""
     # launchd opens the log redirects at spawn and does not create their directory.
-    logs = schedule_artifacts.logs_dir(spec.state_base)
+    logs = os_schedule_gen.logs_dir(spec.state_base)
     try:
         make_private_dirs(logs)
         atomic_write_bytes(target, data)
@@ -393,7 +393,7 @@ def _unsettled(reading: AgentReading, waiter: Waiter, what: str) -> str:
 
 def _print_plan(spec: AgentSpec, target: Path, data: bytes, out: TextIO) -> None:
     """What an install would write and run, for a dry run."""
-    logs = schedule_artifacts.logs_dir(spec.state_base)
+    logs = os_schedule_gen.logs_dir(spec.state_base)
     print(f"would create {logs} and write {target}:", file=out)
     print(data.decode("utf-8"), file=out)
     print("would run, waiting for launchd to confirm each:", file=out)

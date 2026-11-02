@@ -2,7 +2,7 @@
 
 The parser is total. A snapshot folder in iCloud can hold a truncated sync, a stray file, or
 a manifest from a future schema, and prune decides what to delete by reading it. Any input
-that is not exactly this tool's current schema parses as None -- "not ours" -- which is the
+that is not exactly this tool's current schema parses as None ("not ours"), which is the
 safe answer for a deletion decision.
 
 File, archive-member and bundle names are later joined onto the snapshot directory to hash

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""RESTORE.md's run blocks never write outside RESTORE_ROOT -- proven by running them.
+"""RESTORE.md's run blocks never write outside RESTORE_ROOT, proven by running them.
 
 Every attack is built from real git objects in temp dirs: a temp HOME holding a ``.zshrc`` of
 ``ORIGINAL``, RESTORE_ROOT beneath it, and bundles made to reach that file. When the renderer
 accepts an attack manifest the test runs its bundle blocks, then asserts the home is untouched
-and that the renderer refused -- so removing a refusal shows the very write it prevented,
+and that the renderer refused, so removing a refusal shows the very write it prevented,
 without ever reaching past the temp tree.
 
 A block runs with a variable unset only after the test has checked that every expansion of

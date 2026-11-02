@@ -2,7 +2,7 @@
 
 ``git bundle verify`` is deliberately not used: it checks the header and prerequisites only,
 and in testing it accepted a bundle whose pack data was corrupted where ``git clone``
-refused it -- and it will not run outside a repository at all. A mirror clone plus
+refused it, and it will not run outside a repository at all. A mirror clone plus
 ``fsck --full`` exercises the path a real restore takes.
 
 Each restore gets a directory of its own, made under the caller's scratch root with a unique
@@ -23,7 +23,7 @@ compared, never handed to git; a stash entry's is, but only once it is a full ob
 
 Names are data. A bundle's name and a snapshot file's name must pass the manifest's
 safe-name rule before either is joined onto the snapshot. A worktree head's name becomes
-part of a refspec argument -- never a path, never shell text -- and only when git's own
+part of a refspec argument (never a path, never shell text), and only when git's own
 rules for a ref component accept it: ``*`` would make the refspec a glob, which passes by
 fetching whatever worktree heads the bundle happens to hold. Archive members are looked up
 inside the zip, never on disk.
@@ -68,8 +68,8 @@ _REF_FORBIDDEN = frozenset("~^:?*[\\/")
 _SPACE_CODEPOINT = 0x20
 _DELETE_CODEPOINT = 0x7F
 _LOCK_SUFFIX = ".lock"
-#: What reading a damaged archive raises. RuntimeError covers NotImplementedError -- a method
-#: field flipped to one zipfile lacks -- and an encryption flag demanding a password; EOFError
+#: What reading a damaged archive raises. RuntimeError covers NotImplementedError (a method
+#: field flipped to one zipfile lacks) and an encryption flag demanding a password; EOFError
 #: and zlib.error a member stream cut short or corrupted; KeyError a listed member that the
 #: archive does not hold; ValueError a member name flagged UTF-8 that does not decode as it
 #: (UnicodeDecodeError, raised while the archive is opened).
@@ -209,8 +209,8 @@ def hash_named_files(snapshot: Path, names: Sequence[str]) -> HashedFiles:
     """sha256 and size of each of *names* under *snapshot*, in the order given.
 
     A name failing the manifest's safe-name rule is a failed item and is never joined onto
-    *snapshot*, let alone read. So is a name that is not a regular file there -- its last
-    component is examined without being followed -- and one that cannot be read.
+    *snapshot*, let alone read. So is a name that is not a regular file there (its last
+    component is examined without being followed), and one that cannot be read.
     *snapshot* must be local staging: its reads carry no timeout.
     """
     files: list[FileEntry] = []

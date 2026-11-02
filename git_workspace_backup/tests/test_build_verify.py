@@ -49,7 +49,7 @@ class BuildTests(_Tree):
         )
         self.assertEqual(
             [m.name for m in result.archive_members],
-            ["workspace/.superpowers/f.md", "claude/settings.json", "home/.zshrc"],
+            ["workspace/.notes/f.md", "claude/settings.json", "home/.zshrc"],
         )
         self.assertEqual(result.unclassified_ignored, ("new_folder",))
         self.assertIn(
@@ -86,7 +86,7 @@ class BuildTests(_Tree):
     def test_with_memory_snapshot_off_the_step_never_runs_and_corpora_still_bundle(
         self,
     ) -> None:
-        """Off, memory_snapshot is never called -- no call, no failed item.
+        """Off, memory_snapshot is never called: no call, no failed item.
 
         Its route here fails, so a call would show as a failed item as well as a call. The
         corpora are bundled all the same: the key gates the pre-step, not the bundling.

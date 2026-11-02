@@ -1,11 +1,13 @@
 """The daily instant: one hour and minute, every day.
 
-Private to schedule_artifacts: consumers reach it through the re-export in
-``schedule_artifacts.py``.
+Private to os_schedule_gen: consumers reach it through the re-export in
+``os_schedule_gen.py``.
 
 Held apart from ``WeeklySchedule`` rather than as a day-optional variant of it: every
 notation that class derives needs a day, so an optional day would put a branch in each of
-them, while a daily schedule has exactly one notation today -- launchd's.
+them. This class derives its own notations instead, each the scheduler's spelling of
+"every day": a ``*-*-*`` date for systemd and a ``*`` day-of-week for cron, while launchd
+omits ``Weekday`` and Task Scheduler takes a ``DailyAt`` trigger.
 """
 
 from __future__ import annotations
@@ -48,8 +50,18 @@ class DailySchedule:
 
     @property
     def hhmm(self) -> str:
-        """The time as zero-padded ``HH:MM``, for operator-facing messages."""
+        """The time as zero-padded ``HH:MM`` (``StartBoundary``, systemd, messages)."""
         return f"{self.hour:02d}:{self.minute:02d}"
+
+    @property
+    def systemd_on_calendar(self) -> str:
+        """The ``OnCalendar=`` value: any year, month and day, at :attr:`hhmm`."""
+        return f"*-*-* {self.hhmm}"
+
+    @property
+    def cron_fields(self) -> str:
+        """The five cron time fields: ``minute hour * * *``, plain integers as cron reads."""
+        return f"{self.minute} {self.hour} * * *"
 
 
 def parse_daily_time(time_hhmm: str) -> "DailySchedule | None":

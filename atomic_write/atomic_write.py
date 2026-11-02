@@ -1,38 +1,38 @@
 #!/usr/bin/env python3
 """One atomic file replacement, for every tool that ships a file.
 
-A file another process READS while its writer runs -- a state file a later run
-loads, a document a person opens -- is exposed half-written by a
+A file another process reads while its writer runs (a state file a later run
+loads, a document a person opens) is exposed half-written by a
 truncate-and-refill, which surfaces as an intermittent failure that never
 reproduces on its own. Writing beside the target and renaming closes
 the window: the old file stays whole until one indivisible step swaps in the
 new one.
 
-WHY THIS MODULE EXISTS RATHER THAN THE RECIPE BEING RE-TYPED. It was written out
+Why this module exists rather than the recipe being re-typed: it was written out
 by hand in seven tools, and the copies had already drifted apart on every axis
-that matters -- two fsynced and five did not, three set a mode and four left
-`mkstemp`'s 0600 -- readable to nothing but the account that wrote it -- to be
+that matters. Two fsynced and five did not, three set a mode and four left
+`mkstemp`'s 0600, readable to nothing but the account that wrote it, to be
 renamed into place, and one cleaned up after itself not at all, so a failed
 replace stranded a `.tmp` beside committed data. None of those differences was
 a decision; each was whatever the tool in front of the author happened to do
 that day.
 
-WHAT A CALLER GETS, and why each part is here rather than optional:
+What a caller gets, and why each part is here rather than optional:
 
-* the staging file is created in the TARGET'S OWN directory, because
-  `os.replace` is atomic only within one filesystem -- across a mount boundary
+* the staging file is created in the target's own directory, because
+  `os.replace` is atomic only within one filesystem: across a mount boundary
   it quietly becomes a copy, which is the very window this closes;
-* the bytes are FSYNCED before the rename, because the rename's atomicity says
-  nothing about durability: a crash afterwards could otherwise publish an empty
+* the bytes are fsynced before the rename, because the rename's atomicity says
+  nothing about durability: a crash afterward could otherwise publish an empty
   file under the target's name;
-* the mode is SET ON THE DESCRIPTOR rather than left to the umask, because
+* the mode is set on the descriptor rather than left to the umask, because
   `mkstemp` creates at 0600 and the rename carries that through, so a
   published file would be readable by the account that wrote it alone;
 * a failure at any point removes the staging file and re-raises, so an
   interrupted build leaves the old file and nothing else.
 
-A caller that must re-check its target as LATE as possible -- a digest taken
-when it read the file, compared again just before the swap -- passes a
+A caller that must re-check its target as late as possible (a digest taken
+when it read the file, compared again just before the swap) passes a
 `before_rename` check. It runs on the finished staging file, after the write,
 the mode and the fsync, so the only step left after it is the rename itself;
 returning False vetoes the replace, and raising does the same and propagates.
@@ -56,13 +56,13 @@ from typing import Final
 #: the tree, writable only by the account that wrote it. `mkstemp` creates at
 #: 0600 and `os.replace` carries the staging file's mode to the target, so
 #: without this a served file arrives unreadable to the server. Set from the
-#: DESCRIPTOR, so no window exists in which the file is on disk under the
+#: descriptor, so no window exists in which the file is on disk under the
 #: wrong mode.
 SERVED_MODE = 0o644
 
-#: Ask for the mode the TARGET already carries, rather than imposing one. A file
+#: Ask for the mode the target already carries, rather than imposing one. A file
 #: that does not exist yet has none to keep and gets what a plain write would
-#: have given it -- `_NEW_FILE_MODE` filtered by the caller's umask. This is what
+#: have given it: `_NEW_FILE_MODE` filtered by the caller's umask. This is what
 #: a plain `Path.write_text` does by construction, and what five of the seven
 #: writers this module replaces did deliberately: forcing them onto a flat mode
 #: would strip an execute bit from a file that had one and ignore the umask on a
@@ -70,11 +70,11 @@ SERVED_MODE = 0o644
 #: named so a call site says which policy it means.
 PRESERVE: Final = None
 
-#: What a plain `open(path, "wb")` asks the kernel for on a NEW file, before the
+#: What a plain `open(path, "wb")` asks the kernel for on a new file, before the
 #: umask is subtracted. Handed to `os.open` so a file written for the first time
 #: under `PRESERVE` gets the mode a direct write would have given it. Asking the
 #: kernel for what a plain write asks for is what makes that umask-correct
-#: WITHOUT reading the umask, which `os.umask` allows only by setting it -- a
+#: without reading the umask, which `os.umask` allows only by setting it: a
 #: process-wide race inside the caller's own run.
 _NEW_FILE_MODE = 0o666
 
@@ -82,7 +82,7 @@ _NEW_FILE_MODE = 0o666
 #: sorts out of the way and most tools ignore it; the target's own name in the
 #: middle so a stranded one says what it was going to be.
 #:
-#: PUBLIC because a caller's suite pins it: several tools assert that the rename's
+#: Public because a caller's suite pins it: several tools assert that the rename's
 #: source sat beside its target under a name nothing could have planted in advance,
 #: and that assertion has to name the suffix. Reading it from here rather than
 #: repeating the string is what keeps those suites from pinning a spelling this
@@ -101,8 +101,8 @@ _STAGING_NAME_BYTES = 8
 def staging_name(target_name: str, token: str) -> str:
     """The name a staging file for `target_name` takes, with `token` as its random part.
 
-    PUBLIC so a tool that must recognize a staging file -- an ignore rule written
-    into a directory these files land in, a suite scoping what a run may leave --
+    Public so a tool that must recognize a staging file (an ignore rule written
+    into a directory these files land in, a suite scoping what a run may leave)
     derives the shape from here rather than spelling it a second time. Handed a
     glob wildcard for each part, it is the pattern: `staging_name("*", "*")`
     matches every staging file this module makes, so respelling the name here
@@ -129,7 +129,7 @@ def _stage(path: Path) -> tuple[int, Path]:
 
     Beside it because `os.replace` is atomic only within one filesystem.
     `O_EXCL` refuses any path already at the name, a symlink included, so a
-    served file can never be written THROUGH a planted link, and the random name
+    served file can never be written through a planted link, and the random name
     leaves nothing to plant one at.
 
     `os.open` with `_NEW_FILE_MODE` rather than `tempfile.mkstemp`, which takes
@@ -180,24 +180,24 @@ def replace_bytes(
     :raises OSError: If staging, writing or renaming fails. The staging file is
         removed first, so a failure leaves the old contents and nothing else.
     """
-    # Read BEFORE the staging file exists, so a target that vanishes mid-write
+    # Read before the staging file exists, so a target that vanishes mid-write
     # cannot be mistaken for one that was always new.
     wanted = _existing_mode(path) if mode is PRESERVE else mode
     descriptor, staging = _stage(path)
     try:
         with os.fdopen(descriptor, "wb") as handle:
             if wanted is not None:
-                # On the DESCRIPTOR, not the path: a mode set afterwards would
+                # On the descriptor, not the path: a mode set afterward would
                 # leave a window in which the finished bytes are on disk under
                 # the wrong mode, and would race anything watching the
-                # directory. Set BEFORE the write for the same reason.
+                # directory. Set before the write for the same reason.
                 _set_mode(handle.fileno(), wanted)
             handle.write(data)
             handle.flush()
             os.fsync(handle.fileno())
         # As late as the check can run: everything that finishes the staging
         # file is behind it, so the window a caller's re-check leaves open is
-        # the rename alone -- the narrowest it can be without a lock.
+        # the rename alone, the narrowest it can be without a lock.
         vetoed = before_rename is not None and not before_rename(staging)
         if not vetoed:
             os.replace(staging, path)
@@ -221,10 +221,10 @@ def replace_text(
 ) -> bool:
     """Replace `path` with `text`, encoded UTF-8 with LF line endings.
 
-    Encoded here and written as BYTES rather than opened in text mode, so the
+    Encoded here and written as bytes rather than opened in text mode, so the
     line endings are the ones given rather than the host's. Committed outputs in
     this project are byte-compared against a fresh run, and text mode writes
-    CRLF on Windows -- which every caller would otherwise have to remember to
+    CRLF on Windows, which every caller would otherwise have to remember to
     suppress with an explicit newline keyword, and four of seven did.
 
     :param path: The file to replace. Its parent directory must exist.

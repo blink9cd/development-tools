@@ -8,3 +8,6 @@ __pycache__/
 htmlcov/
 .venv/
 .hypothesis/
+# `pip install '.[test]'` builds in place, leaving these beside the sources.
+build/
+*.egg-info/

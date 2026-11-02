@@ -17,7 +17,7 @@ import unittest
 import xml.etree.ElementTree as ET
 from datetime import date, datetime
 
-import schedule_artifacts as sa
+import os_schedule_gen as sa
 
 _NS = "{http://schemas.microsoft.com/windows/2004/02/mit/task}"
 _FAKE_PYTHON = r"C:\fake\Python314\pythonw.exe"
@@ -30,7 +30,7 @@ EXPECTED_WEEKLY_XML = r"""<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
     <Description>Weekly maintenance sweep (S4U, least privilege).</Description>
-    <URI>\GateTreeSweep\WeeklySweep</URI>
+    <URI>\Maintenance\WeeklySweep</URI>
   </RegistrationInfo>
   <Triggers>
     <CalendarTrigger>
@@ -64,7 +64,7 @@ EXPECTED_WEEKLY_XML = r"""<?xml version="1.0" encoding="UTF-16"?>
   <Actions Context="Author">
     <Exec>
       <Command>C:\fake\py\python.exe</Command>
-      <Arguments>&quot;C:\fake\tool\gate_tree_sweep.py&quot; --mode run</Arguments>
+      <Arguments>&quot;C:\fake\tool\weekly_sweep.py&quot; --mode run</Arguments>
       <WorkingDirectory>C:\fake\tool</WorkingDirectory>
     </Exec>
   </Actions>
@@ -122,7 +122,7 @@ class BuildTaskXmlPinTests(unittest.TestCase):
         xml = sa.build_task_xml(
             sa.WeeklySchedule(weekday="Sunday", hour=3, minute=0),
             r"C:\fake\py\python.exe",
-            r"C:\fake\tool\gate_tree_sweep.py",
+            r"C:\fake\tool\weekly_sweep.py",
             date(2026, 8, 16),
         )
         self.assertEqual(xml, EXPECTED_WEEKLY_XML)

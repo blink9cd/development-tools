@@ -3,7 +3,7 @@
 Exit 2 means it cannot be judged: the agent is not installed, or no run record for the
 destination can be read. Exit 1 lists every problem found, then any notes; exit 0 is healthy,
 with notes. The verdict is a pure function of :class:`StatusFacts`, and a value it does not
-recognize -- an agent state, a run outcome, an upload summary -- is a problem, never health.
+recognize (an agent state, a run outcome, an upload summary) is a problem, never health.
 
 The upload grace exists because the scheduled run is followed by an upload that can
 legitimately lag; past it, "written but not uploaded" is a failure, which catches a signed-out
@@ -18,8 +18,8 @@ A snapshot dated after ``now`` is a problem: its age is negative, so it would ne
 and a pending upload would sit inside its grace for ever. That is a clock set back, or a
 snapshot from the future, and either one must be said.
 
-A skipped last run -- an ``--if-due`` run on a day already covered; a run that finds the lock
-held records nothing -- is not itself a problem. The destination is judged by what it holds:
+A skipped last run, an ``--if-due`` run on a day already covered, is not itself a problem,
+and a run that finds the lock held records nothing. The destination is judged by what it holds:
 the newest complete snapshot's age, manifest and upload, and the ledger, so a skip masks no
 staleness. Nor does it mask an incomplete snapshot:
 a skip overwrites the record of the run before it, so when the newest snapshot the ledger
@@ -36,8 +36,8 @@ destination. A folder named for another machine is that machine's to prune, so a
 are one informational count. A bare name, from before machine identity, is untracked as
 above. A folder named for this machine that its ledger lacks is untracked too, and also a
 problem, with two causes and a fix for each. Most likely it is this machine's own snapshot
-that a run could not ledger -- a promote that could not confirm, a ledger save that failed,
-or a restore of this machine that started with an empty ledger -- and it is checked and kept
+that a run could not ledger (a promote that could not confirm, a ledger save that failed,
+or a restore of this machine that started with an empty ledger), and it is checked and kept
 or deleted by hand. Relabeling this machine would only make it worse: those folders would
 then count as another machine's, which no machine prunes. Only a second machine using the
 same label is fixed in the identity file, on one of them.
@@ -47,8 +47,8 @@ also requires. The snapshot's name and that hash come from one ledger entry, sel
 A manifest that does not match is reported unreadable, and the upload check then covers the
 manifest file alone rather than a file list nothing vouches for.
 
-"Not in iCloud" means two different things. A destination deliberately chosen elsewhere -- a
-local or external disk -- gets a note, and the upload check does not apply. A destination at
+"Not in iCloud" means two different things. A destination deliberately chosen elsewhere, on a
+local or external disk, gets a note, and the upload check does not apply. A destination at
 or under iCloud Drive's folder whose files are not in iCloud is a problem: iCloud Drive is
 turned off or signed out, the folder is a plain local directory again, and every run succeeds
 while nothing leaves the machine. Which one applies is decided against the injected home's
@@ -306,7 +306,7 @@ def _in_icloud_drive(destination: Path, home: Path) -> bool:
     was given, and an NFD spelling of an NFC home names the same folder. A wrong "inside" can
     only turn a note into a problem, which is the safe direction. Not covered, in the unsafe
     direction: a destination spelled through a firmlink, such as ``/System/Volumes/Data/...``,
-    which resolving does not map back, reads as outside -- a note where a problem was due. A
+    which resolving does not map back, reads as outside: a note where a problem was due. A
     destination written as ``~/...`` never takes that form.
     """
     root = [apfs_name_key(part) for part in icloud_drive_root(home).parts]

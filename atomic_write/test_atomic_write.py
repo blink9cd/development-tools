@@ -56,16 +56,16 @@ class ContentTest(_Scratch):
     def test_text_is_written_as_utf8_with_lf_whatever_the_host_does(self) -> None:
         # Pinned rather than left to the platform: committed outputs are
         # byte-compared against a fresh run, and host text mode writes CRLF on
-        # Windows. Encoding here and writing BINARY is what makes that true
+        # Windows. Encoding here and writing binary is what makes that true
         # without every caller remembering `newline="\n"`.
         target = self.folder / "lines.txt"
         atomic_write.replace_text(target, "one\ntwo\né\n")
         self.assertEqual(target.read_bytes(), "one\ntwo\né\n".encode("utf-8"))
 
     def test_the_staging_file_is_opened_in_binary_mode(self) -> None:
-        # Writing BYTES is only half of that. On Windows a descriptor from
-        # os.open is in the C runtime's TEXT mode unless O_BINARY is passed, and
-        # the runtime then writes every "\n" as "\r\n" beneath the "wb" handle --
+        # Writing bytes is only half of that. On Windows a descriptor from
+        # os.open is in the C runtime's text mode unless O_BINARY is passed, and
+        # the runtime then writes every "\n" as "\r\n" beneath the "wb" handle,
         # so the test above passes on a POSIX host and fails on the one
         # host it guards. The flag exists only on Windows, so it is faked at
         # Windows' own value. The recording open strips that bit again, because
@@ -96,15 +96,15 @@ class ModeTest(_Scratch):
     """The mode the file is published with."""
 
     def setUp(self) -> None:
-        """Scratch directory, plus a STRICT umask for the duration.
+        """Scratch directory, plus a strict umask for the duration.
 
-        LOAD-BEARING, and it became so on the rewrite that added `PRESERVE`.
-        Staging moved from `mkstemp` -- which opens at an explicit 0600 no umask
+        Load-bearing, and it became so on the rewrite that added `PRESERVE`.
+        Staging moved from `mkstemp` (which opens at an explicit 0600 no umask
         can widen, so deleting the `fchmod` failed this test under 0o022 and
-        0o077 alike -- to a path-based `os.open` at `_NEW_FILE_MODE`, which the
+        0o077 alike) to a path-based `os.open` at `_NEW_FILE_MODE`, which the
         umask reduces. Under the everyday 0o022 that lands on 0644: the right
         answer for the wrong reason. Measured on the rewrite, the mutant with
-        the `fchmod` deleted PASSES at 0o022 and FAILS only here at 0o077.
+        the `fchmod` deleted passes at 0o022 and fails only here at 0o077.
 
         The note this replaces recorded the `mkstemp` measurement and predicted
         exactly that, which is why the umask was still in place to catch it.
@@ -132,14 +132,14 @@ class WindowsHostTest(_Scratch):
 
         The host is stood in by name: `sys.platform` reads "win32" and `os.fchmod`
         is absent, as both are on Windows below 3.13. An unguarded call
-        raises `AttributeError` -- not the `OSError` a caller is told to expect --
-        and the target never arrives. The POSIX half, that the mode IS still set
+        raises `AttributeError`, not the `OSError` a caller is told to expect,
+        and the target never arrives. The POSIX half, that the mode is still set
         where there is one, is `ModeTest`'s.
         """
         target = self.folder / "out.txt"
         # Removed through the module's namespace rather than read as an attribute,
         # so this also type-checks for the Windows floor, where the name never
-        # existed; `patch.dict` puts the namespace back whole afterwards.
+        # existed; `patch.dict` puts the namespace back whole afterward.
         with mock.patch.dict(os.__dict__), mock.patch.object(sys, "platform", "win32"):
             os.__dict__.pop("fchmod", None)
             atomic_write.replace_text(target, "whole\n")
@@ -151,13 +151,13 @@ class PreservedModeTest(_Scratch):
     """The mode a caller gets by asking for `PRESERVE` rather than a number.
 
     Five of the writers this module replaces do not stamp a mode on: they keep
-    whatever the file already carried, and a plain `write_text` -- what the two
-    page writers do -- behaves the same way by construction. Forcing those onto
+    whatever the file already carried, and a plain `write_text`, which sets no
+    mode either, behaves the same way by construction. Forcing those onto
     `SERVED_MODE` would strip an execute bit from a file that had one and ignore
     the umask on a file that had none, so the policy is a caller's choice rather
     than this module's.
 
-    Every assertion compares a mode READ BACK from disk against another read
+    Every assertion compares a mode read back from disk against another read
     back the same way, never a literal: Windows' `chmod` only toggles the
     read-only flag, so a literal would pin the author's platform rather than the
     running one.
@@ -178,7 +178,7 @@ class PreservedModeTest(_Scratch):
     def test_a_rewrite_keeps_the_files_own_bits(self) -> None:
         # 0o755 is the case a flat SERVED_MODE would silently break: a file
         # someone made executable comes back without the bit, and nothing in the
-        # tree looks wrong afterwards.
+        # tree looks wrong afterward.
         for name, mode in (
             ("served.html", 0o644),
             ("regenerate.sh", 0o755),
@@ -207,9 +207,9 @@ class PreservedModeTest(_Scratch):
         """Two masks, because one cannot tell a creation mode from a literal.
 
         0o002 leaves group-write standing, which separates asking the kernel for
-        0o666 from asking for a hardcoded 0o644 -- under 0o027 both land 0o640
+        0o666 from asking for a hardcoded 0o644: under 0o027 both land 0o640
         and the assertion says nothing. 0o077 catches the opposite mistake, a
-        mode stamped on AFTER creation rather than filtered by the mask.
+        mode stamped on after creation rather than filtered by the mask.
         """
         for mask in (0o002, 0o077):
             with self.subTest(umask=oct(mask)):
@@ -233,10 +233,10 @@ class StagingTest(_Scratch):
     write does not finish."""
 
     def test_the_staging_file_sits_in_the_targets_own_directory(self) -> None:
-        # `os.replace` is atomic only WITHIN one filesystem, so staging in the
-        # system temp dir would silently become a copy across a mount boundary
-        # -- and a copy is exactly the half-written window this module exists
-        # to close.
+        # `os.replace` is atomic only within one filesystem, so staging in the
+        # system temp dir would silently become a copy across a mount boundary,
+        # and a copy is exactly the half-written window this module exists to
+        # close.
         target = self.folder / "beside.txt"
         seen: list[Path] = []
         with mock.patch.object(
@@ -287,7 +287,7 @@ class StagingNameTest(_Scratch):
     def test_a_staging_file_matches_the_builder_given_wildcards(self) -> None:
         # The property a caller's ignore rule relies on: hand the builder a glob
         # wildcard for each part and the pattern matches every name `_stage` makes.
-        # Pinned through a REAL staging file, so a respelling inside `_stage` that
+        # Pinned through a real staging file, so a respelling inside `_stage` that
         # bypassed the builder would fail here rather than in a corpus.
         target = self.folder / "note.md"
         names: list[str] = []
@@ -312,7 +312,7 @@ class StagingNameTest(_Scratch):
 class BeforeRenameTest(_Scratch):
     """The optional check a caller runs on the finished staging file, and its veto.
 
-    It exists for the writers that re-check their target as late as possible -- a
+    It exists for the writers that re-check their target as late as possible: a
     digest taken at read time, compared again just before the swap. Run any earlier
     and the window it guards widens by whatever work is still left; run after the
     rename and it guards nothing.

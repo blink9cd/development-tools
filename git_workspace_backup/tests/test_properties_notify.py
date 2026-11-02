@@ -5,9 +5,9 @@ The conventions are test_properties.py's: every ``# fuzz-target`` subject has a 
 deterministic profile is loaded before any ``@given`` is defined. Kept out of that file,
 which is near the length cap.
 
-What they are FOR: the text is a failure reason, which can hold anything a failing command
-printed, and it becomes an argv item. It must never carry a NUL -- launching a process with
-one raises instead of exiting -- never exceed the limit, and never lose the start of a reason,
+What they are for: the text is a failure reason, which can hold anything a failing command
+printed, and it becomes an argv item. It must never carry a NUL (launching a process with
+one raises instead of exiting), never exceed the limit, and never lose the start of a reason,
 which is where the outcome and the first failed item sit. The long arm exists because text
 near the limit is where an off-by-one lives, and short random text never reaches it.
 """

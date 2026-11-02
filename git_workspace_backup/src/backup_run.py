@@ -2,31 +2,31 @@
 
 A validation failure exits 2 without touching the destination; a snapshot promoted but
 incomplete exits 1; only a verified, complete snapshot exits 0. Every non-dry run that takes
-the lock records its outcome under the destination's state directory -- validation failures
-and ``--if-due`` skips included -- so status can tell "never ran" from "fails every day". The
+the lock records its outcome under the destination's state directory, validation failures
+and ``--if-due`` skips included, so status can tell "never ran" from "fails every day". The
 record is written first, then any non-zero exit is posted, then the outcome is printed. A run
 that finds the lock held prints its skip and exits 1, but neither records nor posts it: a
-manual run racing the agent is not a fault, and the holder's record -- perhaps a failure it
-is posting at that moment -- must survive it. A record that cannot be written is said in what
+manual run racing the agent is not a fault, and the holder's record (perhaps a failure it
+is posting at that moment) must survive it. A record that cannot be written is said in what
 is printed and posted, and makes the run need attention whatever it came to.
 
 What goes wrong while the run holds its lock becomes one of three things:
 
-- a failed item on a snapshot that is still promoted -- a build or verification failure, or
+- a failed item on a snapshot that is still promoted: a build or verification failure, or
   one backup_seal records while sealing the staged snapshot;
 - a failed run, exit 1: staging that cannot be made fresh, a promote refused, a manifest that
-  does not read back, any other filesystem error -- and, as the last resort, any other
+  does not read back, any other filesystem error, and, as the last resort, any other
   exception, recorded and posted as an internal error, its traceback printed to stderr after;
 - an unrunnable run, exit 2: validation, the ledger, or the lock itself.
 
 Only ``Exception`` is caught, so an interrupt still stops the run. Once the outcome is recorded
 and posted, printing it is best effort: an output stream that cannot be written loses the line,
-never the exit code. Releasing the lock afterwards is not guarded, and a lock that cannot be
+never the exit code. Releasing the lock afterward is not guarded, and a lock that cannot be
 released still raises.
 
 The ledger records a promoted snapshot only once its manifest reads back from the destination,
-within a bound, as the bytes written. Until then the folder is one prune never touches -- the
-safe direction if the run dies in between -- and a run that cannot confirm prunes nothing.
+within a bound, as the bytes written. Until then the folder is one prune never touches, the
+safe direction if the run dies in between, and a run that cannot confirm prunes nothing.
 """
 
 from __future__ import annotations
@@ -150,8 +150,8 @@ def run_backup(request: RunRequest, deps: RunDeps) -> int:
         detail = f"could not take the run lock: {exc}"
         return _finish(state, deps, _Outcome(OUTCOME_FAILED, detail, EXIT_UNRUNNABLE))
     if not held:
-        # Printed, never recorded: the holder's record -- a failure it is posting right now,
-        # say -- must outlive a skip that races it, and only the holder writes under the lock.
+        # Printed, never recorded: the holder's record (a failure it is posting right now,
+        # say) must outlive a skip that races it, and only the holder writes under the lock.
         print(f"{OUTCOME_SKIPPED}: {HELD_LOCK_DETAIL}", file=deps.err)
         return EXIT_ATTENTION
     try:

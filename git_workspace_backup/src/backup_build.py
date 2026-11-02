@@ -7,14 +7,14 @@ memory corpora are bundled either way. Every later item is independent: one fail
 recorded and the rest proceed.
 
 A bundle is listed only when its result carries no failure. A failed bundle can still leave a
-whole file in staging -- ``list-heads`` runs after the file is written -- so a file on disk
+whole file in staging (``list-heads`` runs after the file is written), so a file on disk
 is never evidence that its bundle is good.
 
 Nothing unreadable reads as absent. A projects directory that exists but cannot be listed,
 and an archive that cannot be written, are failed items rather than raised errors. A memory
 project whose ``memory/.git`` cannot be examined is bundled anyway, so the reason it could
 not be backed up is recorded. That probe is an explicit ``stat`` rather than
-``Path.is_dir``, which on 3.14 returns False for a permission error -- measured: an
+``Path.is_dir``, which on 3.14 returns False for a permission error. Measured: an
 unreadable project vanished from the build without a word.
 """
 

@@ -47,7 +47,7 @@ MANIFEST = Manifest(
     archive_members=(FileEntry(name="home/.zshrc", sha256=SHA, size=3),),
     dirty_worktrees=(DirtyWorktree(path_name="wt", changed_paths=-1),),
     failed=(FailedItem(item="memory:x", reason="no refs"),),
-    skipped_symlinks=("workspace/.superpowers/link",),
+    skipped_symlinks=("workspace/.notes/link",),
     unclassified_ignored=("new_folder",),
 )
 
@@ -158,7 +158,7 @@ class ManifestTests(unittest.TestCase):
                 self.assertIsNone(bm.parse_manifest(data))
 
 
-#: Names that are empty, absolute, or have an empty or dot component -- each can escape.
+#: Names that are empty, absolute, or have an empty or dot component: each can escape.
 _ESCAPING_NAMES = ("/abs", "../x", "a/../../b", "a//b", "./a", "", "nul\x00")
 #: The manifest fields whose names are later joined onto the snapshot directory.
 _NAME_FIELDS = ("files", "archive_members", "bundles")

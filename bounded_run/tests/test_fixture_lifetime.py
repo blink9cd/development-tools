@@ -2,8 +2,8 @@
 
 ``samples/gc_child.py`` models a child whose grandchild holds the capture pipes, so it must
 outlive every bound a test sets: a pair found gone is then a pair the kill under test ended.
-But a pair that NEVER ends leaks for good whenever a test's cleanup is lost -- a runner killed
-mid-test, say -- so both processes exit once a ceiling far past any test's timing has passed.
+But a pair that never ends leaks for good whenever a test's cleanup is lost (a runner killed
+mid-test, say), so both processes exit once a ceiling far past any test's timing has passed.
 
 The live case runs a copy of the fixture with only that ceiling shortened, so it proves the
 real fixture's code path ends both processes, without waiting the real hour.

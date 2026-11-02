@@ -1,13 +1,13 @@
 """Move a verified snapshot into the destination, and prune what the ledger owns.
 
-Promote is one rename -- staging and iCloud Drive share an APFS volume -- with a copy fallback
-on EXDEV that records its intent in the ledger FIRST, so a crash mid-copy leaves a known
+Promote is one rename, since staging and iCloud Drive share an APFS volume, with a copy
+fallback on EXDEV that records its intent in the ledger first, so a crash mid-copy leaves a known
 leftover rather than an orphan. A folder is never replaced.
 
 Prune is the only step with no undo, so the run calls it last, and it is the only code in this
 tool that deletes snapshot data. It touches only ``destination/<name>`` for a ledger name of
-the shape the tool writes -- a snapshot name for a promoted entry, ``.incoming-`` and a
-snapshot name for an incoming one -- never follows a symlink, and deletes a promoted folder
+the shape the tool writes (a snapshot name for a promoted entry, ``.incoming-`` and a
+snapshot name for an incoming one), never follows a symlink, and deletes a promoted folder
 only when its manifest, read as a regular file with no symlink beneath the destination, still
 hashes to the ledger's value. A manifest it cannot read that way in time (iCloud may have
 offloaded it) defers the deletion instead of forcing it. A removal that fails is recorded as
@@ -162,10 +162,10 @@ def promote(
     """Move *staging* to ``destination/name``; returns the target and the ledger to carry on.
 
     *name* must be a snapshot name, so the target is always one folder directly under the
-    destination, of a shape prune can later prove it owns. Anything already at the target -- a
-    folder, a file, a symlink dangling or not -- is refused, as is a target whose state cannot
+    destination, of a shape prune can later prove it owns. Anything already at the target (a
+    folder, a file, a symlink dangling or not) is refused, as is a target whose state cannot
     be read. The check and the rename are two steps, and on POSIX ``rename`` silently replaces
-    an EMPTY directory created between them; the standard library has no exclusive rename. The
+    an empty directory created between them; the standard library has no exclusive rename. The
     caller holds the run lock, so nothing else in this tool can create that directory in the
     window; another program writing snapshot-named folders into the destination is outside
     what this guards. The cross-volume path checks the target a second time, immediately
@@ -359,7 +359,7 @@ def _is_owned_name(entry: LedgerEntry) -> bool:
 
     Promoted: a snapshot name. Incoming: :data:`INCOMING_PREFIX` and a snapshot name. Incoming
     entries skip the manifest proof, so this is all that keeps one from naming a real snapshot
-    -- or, in a hand-built ledger, ``""``, ``"."`` or ``".."`` -- and deleting it unproven. A
+    (or, in a hand-built ledger, ``""``, ``"."`` or ``".."``) and deleting it unproven. A
     snapshot name is one plain path component, so neither shape can leave the destination.
     """
     if entry.state == STATE_INCOMING:
@@ -377,9 +377,9 @@ def sweep_staging(
     """Remove everything left in *staging_root*; safe only while the run lock is held.
 
     Only direct children go, and the root itself stays. A directory goes through
-    *remove_tree*; a file or a symlink -- to a directory or not -- is unlinked, never followed.
-    A root that lstat does not show as a directory -- absent, unreadable, or a symlink even to
-    a directory -- sweeps nothing: the children of a link's target are not staging's to remove.
+    *remove_tree*; a file or a symlink, to a directory or not, is unlinked, never followed.
+    A root that lstat does not show as a directory (absent, unreadable, or a symlink even to
+    a directory) sweeps nothing: the children of a link's target are not staging's to remove.
     """
     if not _is_directory(staging_root, follow=False):
         return ()

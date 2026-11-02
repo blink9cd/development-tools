@@ -1,8 +1,8 @@
-"""Grouped suite: the escaping boundary -- a message holding a lone surrogate, printed.
+"""Grouped suite: the escaping boundary: a message holding a lone surrogate, printed.
 
 Python decodes argv and file names with ``surrogateescape``, so a byte that is not UTF-8
-arrives as a lone surrogate, and a strict stream refuses it -- stdout always, once
-``force_utf8_streams`` has run; stderr escapes it by itself. Every stream here is a real
+arrives as a lone surrogate, and a strict stream refuses it: stdout always, once
+``force_utf8_streams`` has run, while stderr escapes it by itself. Every stream here is a real
 ``io.TextIOWrapper`` over bytes. Never ``io.StringIO``: it stores text without encoding
 it, so it accepts what a real stream refuses, and a test written over one passes with
 the defect present.
@@ -22,7 +22,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-# A sibling tool sits one level ABOVE the folder the bootstrap above reaches, so it
+# A sibling tool sits one level above the folder the bootstrap above reaches, so it
 # needs its own insert.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "bounded_run"))
 
@@ -30,12 +30,12 @@ import stdio_utf8  # noqa: E402 - import follows the sys.path bootstrap above
 import bounded_run  # noqa: E402 - reached by its own insert above
 
 #: A generous ceiling for the black-box child: a hung CLI must fail this suite
-#: rather than hang it.
+#: rather than hang it, because unattended runs have no one to notice a hang.
 _SUBPROCESS_TIMEOUT = 120
 
-# The determinism convention, held in the PROFILE rather than a
-# per-test ``@settings``: a fuzzing run may apply its own settings object to every target,
-# and Hypothesis refuses a second one on a function that already carries one.
+# A deterministic Hypothesis run, held in the profile rather than a per-test ``@settings``:
+# an exploring campaign runner applies its own settings object to every target, and
+# Hypothesis refuses a second one on a function that already carries one.
 # too_slow is suppressed as well: on a cold .hypothesis cache the first draw also
 # pays Hypothesis's one-time setup (the unicode tables a text strategy needs, a scan
 # of the local modules for constants), which under load outlasts even the limit
@@ -56,8 +56,9 @@ _ESCAPED = "\\udcff"
 
 #: Text holding at least one lone surrogate, placed by construction. ``st.text`` draws
 #: none by default, and a surrogate-admitting alphabet handed to it draws one in well
-#: under 1% of characters, so a
-#: property over either would pass having almost never met the input it exists for.
+#: under 1% of characters (the 2,048 surrogates are 0.18% of the code space, and over 1,000
+#: Hypothesis examples of such ``st.text`` at most 5 held one), so a property over either
+#: would pass having almost never met the input it exists for.
 _SOME_CHARS = st.lists(st.characters(exclude_categories=()), max_size=8).map("".join)
 _TEXT_WITH_A_SURROGATE = st.tuples(
     _SOME_CHARS, st.characters(categories=["Cs"]), _SOME_CHARS
@@ -90,7 +91,7 @@ class TestStrictStreamHarness(unittest.TestCase):
         """Every stream but the process's stderr is forced strict, whatever it was.
 
         This one opened with ``backslashreplace``, as stderr does. Handed over as any
-        other stream -- stdout, say -- it refuses a lone surrogate once forced, which is
+        other stream (stdout, say), it refuses a lone surrogate once forced, which is
         why a stdout message must still pass through ``printable``.
         """
         stream = io.TextIOWrapper(io.BytesIO(), "cp1252", errors="backslashreplace")
@@ -187,7 +188,7 @@ class TestEscapingArgumentParser(unittest.TestCase):
     def test_a_subparser_inherits_the_escaping(self) -> None:
         """``add_subparsers`` builds each sub-parser from the parent's own class.
 
-        Asked for its OWN help, so the sub-parser's method does the printing. An
+        Asked for its own help, so the sub-parser's method does the printing. An
         unrecognized argument would not prove it: argparse hands one back up to the
         parent, which reports it.
         """
@@ -260,7 +261,7 @@ class TestEscapingEndToEnd(unittest.TestCase):
         self.assertNotIn(b"Traceback", done.stderr)
 
     def test_a_plain_parser_help_under_an_undecodable_prog_tracebacks(self) -> None:
-        """Guard: help goes to stdout, which stays strict -- a traceback and exit 1."""
+        """Guard: help goes to stdout, which stays strict, so it ends in a traceback and exit 1."""
         done = self._run("plain", f"tool{_LONE}", "--help")
         self.assertEqual(done.returncode, 1, done.stderr)
         self.assertIn(b"UnicodeEncodeError", done.stderr)

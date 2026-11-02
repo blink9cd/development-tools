@@ -1,17 +1,17 @@
 """Classify the primary checkout's gitignored paths: backed up, regenerable, or unclassified.
 
-An unclassified path is a gitignored file nobody has decided about -- the shape a new
+An unclassified path is a gitignored file nobody has decided about: the shape a new
 irreplaceable folder takes on the day it appears. Status fails on any, and the remedy is
 always one line in ``extras`` or ``regenerable``.
 
 Git lists ignored paths with ``--ignored=matching``, collapsing to one ``dir/`` entry only a
-directory that itself matches an ignore pattern -- a directory whose files are each ignored
-by their own patterns is listed file by file -- and ``-z`` keeps names with spaces or quotes
+directory that itself matches an ignore pattern (a directory whose files are each ignored
+by their own patterns is listed file by file), and ``-z`` keeps names with spaces or quotes
 unmangled. Three things about that invocation are load-bearing:
 
 - ``--untracked-files=normal`` is explicit because git refuses ``--ignored=matching`` next to
   a ``status.showUntrackedFiles=no`` config, which would fail every drift check;
-- ``--no-optional-locks`` stops status refreshing a stale index under ``index.lock`` -- the
+- ``--no-optional-locks`` stops status refreshing a stale index under ``index.lock``, the
   lock a commit the user is making at that moment needs;
 - under ``-z`` a rename or copy record's original path follows as a bare record of its own,
   so it is consumed rather than read as a status line (a file named ``!! x`` would otherwise
@@ -91,8 +91,8 @@ def pattern_matches(pattern: str, path: str) -> bool:
     """Whether *pattern* matches *path* or one of its ancestor directories.
 
     Component-wise ``fnmatchcase``: ``*`` and ``?`` never cross ``/``, and a ``**``
-    component matches any number of components, none included. A pattern with no components
-    -- empty, or slashes alone -- names no path, so it matches nothing; configuration refuses
+    component matches any number of components, none included. A pattern with no components,
+    empty or slashes alone, names no path, so it matches nothing; configuration refuses
     one already, and this keeps it from covering every path if one ever gets through.
     """
     components = _components(pattern)
@@ -134,7 +134,7 @@ def _components(pattern: str) -> tuple[str, ...]:
 
 
 def _matches_a_prefix(pattern: tuple[str, ...], parts: tuple[str, ...]) -> bool:
-    """Whether *pattern* consumes some leading run of *parts* -- the path or an ancestor."""
+    """Whether *pattern* consumes some leading run of *parts*: the path or an ancestor."""
     return len(_consumed_counts(pattern, parts)) == len(pattern) + 1
 
 

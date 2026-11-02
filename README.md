@@ -8,6 +8,35 @@ their tests use, shipped with their own tests.
 | --- | --- |
 | [`git_workspace_backup`](git_workspace_backup/git_workspace_backup.md) | A daily, verified backup of a git checkout's un-pushed work, normally to iCloud Drive |
 
+## Install
+
+Clone this repository anywhere outside the one you want backed up:
+
+```bash
+git clone <repository-url> development-tools
+```
+
+Every command below runs from the clone's root, so `cd development-tools` first.
+
+Needs Python 3.12 or newer. Install into a virtual
+environment, because Homebrew and Debian Python refuse a
+system-wide `pip install`:
+
+```bash
+python3 -m venv .venv
+# shellcheck source=/dev/null # the activate script exists only once the line above has run
+source .venv/bin/activate
+pip install '.[test]'
+```
+
+The commands below assume the venv is active, so `python`
+is the venv's interpreter.
+
+The stock `python3` on macOS is older than 3.12, and `pip install` then refuses the project.
+Create the venv with a 3.12 or newer interpreter instead, for example `python3.12 -m venv .venv`
+with one from python.org or Homebrew. The `test` extra installs Hypothesis, which only the
+tests need; the tools themselves use the standard library alone.
+
 ## git_workspace_backup
 
 A remote holds only what was pushed to it. Every other branch, every stash entry and the
@@ -34,40 +63,45 @@ has actually been uploaded. Uncommitted changes are listed in the manifest, neve
   measured on an old release: install loads and removes the agent with `launchctl bootstrap`
   and `bootout`, which arrived in OS X 10.10, and the archive's reads refuse a symlink
   anywhere in a path with `O_NOFOLLOW_ANY`, which arrived in macOS 11.
-- Python 3.12 or newer. The stock `python3` on macOS is too old; install 3.12 or newer, for
-  example from python.org or Homebrew. The standard library is enough to run the tool; the
-  tests need Hypothesis.
+- Python 3.12 or newer, in the virtual environment [Install](#install) sets up.
 - git 2.36 or newer on `PATH`. A restore also needs `unzip`.
 - For the upload check, a destination inside iCloud Drive. A destination elsewhere still
   works, and `status` notes that the check does not apply.
 
-### Install
+### Setting it up
 
-Clone this repository anywhere outside the one you want backed up:
+Put the `[tool.workspace_backup]` table below in the root `pyproject.toml` of the repository
+you want backed up, and point the tool at that repository with `--repo`. Below,
+`~/your-repo` stands for its path, which must be absolute or start with `~/`; a linked
+worktree's path means its primary checkout. Run each command from the clone's root, with the
+venv active.
+
+Before the first install, list the checkout's gitignored paths, so that each one goes into
+`extras` (back it up) or `regenerable` (deliberately not):
 
 ```bash
-git clone <repository-url> development-tools
+git -C ~/your-repo status --porcelain --ignored=matching --untracked-files=normal
 ```
 
-Then put the `[tool.workspace_backup]` table below in the root `pyproject.toml` of the
-repository you want backed up, and point the tool at that repository with `--repo`. Below,
-`~/your-repo` stands for its path, which must be absolute or start with `~/`; a linked
-worktree's path means its primary checkout:
+The lines starting `!!` are the ignored paths. The dry run does not list them, and status
+exits 1 listing any path in neither list, so a path you skip here first shows up as a status
+problem after the first run. Then:
 
 ```bash
-python3.12 development-tools/git_workspace_backup/git_workspace_backup.py --mode run --dry-run --repo ~/your-repo
-python3.12 development-tools/git_workspace_backup/git_workspace_backup.py --mode install --repo ~/your-repo
-python3.12 development-tools/git_workspace_backup/git_workspace_backup.py --mode status --repo ~/your-repo
+python git_workspace_backup/git_workspace_backup.py --mode run --dry-run --repo ~/your-repo
+python git_workspace_backup/git_workspace_backup.py --mode install --repo ~/your-repo
+python git_workspace_backup/git_workspace_backup.py --mode status --repo ~/your-repo
 ```
 
 The dry run prints the plan and writes nothing. Install writes a per-user launchd agent and
 loads it, recording the absolute paths of the interpreter, the script, the repository and the
 destination; if any of them moves, or you change `destination`, run install again. The agent
 runs daily at the install's `--time` and again at login, and loading it starts a run unless
-today already has a complete snapshot. Run status once that run has finished: install prints
-the status command to use, carrying both of the agent's pins, `--repo` and `--destination`.
-Status judges the folder its own options or the configuration name, and flags it when that
-folder is not the destination the installed agent has pinned.
+today already has a complete snapshot. Until the agent is installed and that run has recorded
+its result, status exits 2: it has nothing to judge. Run status once that run has finished:
+install prints the status command to use, carrying both of the agent's pins, `--repo` and
+`--destination`. Status judges the folder its own options or the configuration name, and
+flags it when that folder is not the destination the installed agent has pinned.
 
 There is one agent per account: its launchd label is fixed, so installing for a second
 repository replaces the agent the first install loaded, and backs up only the second. Install
@@ -84,14 +118,14 @@ Disk Access covers every protected folder, and a Files and Folders entry for the
 is enough where one is offered.
 
 Which process that is depends on how your Python was built. A virtual environment's
-`python3.12` is only a link, and on a framework build, such as Homebrew's or python.org's,
+`python` is only a link, and on a framework build, such as Homebrew's or python.org's,
 the file it resolves to is itself only a launcher stub: the process macOS judges is the
 `Python.app` inside the framework, at `<sys.base_prefix>/Resources/Python.app`. On any other
-build it is the resolved interpreter. Run this with the interpreter you installed with, to
-print the one to grant:
+build it is the resolved interpreter. Run this with the venv active, so it uses the interpreter
+you installed with, to print the one to grant:
 
 ```bash
-python3.12 -c 'import os, sys; app = os.path.join(sys.base_prefix, "Resources", "Python.app"); print(os.path.realpath(app if os.path.isdir(app) else sys.executable))'
+python -c 'import os, sys; app = os.path.join(sys.base_prefix, "Resources", "Python.app"); print(os.path.realpath(app if os.path.isdir(app) else sys.executable))'
 ```
 
 A Homebrew upgrade of Python changes that path, so grant the new one again after each
@@ -107,7 +141,7 @@ Then wait for the next run, or install again to start one, and run status.
 ### Uninstalling
 
 ```bash
-python3.12 development-tools/git_workspace_backup/git_workspace_backup.py --mode uninstall --repo ~/your-repo
+python git_workspace_backup/git_workspace_backup.py --mode uninstall --repo ~/your-repo
 rm -r ~/.workspace_backup
 ```
 
@@ -125,8 +159,8 @@ track: check each, and keep or delete it by hand.
 ### Configuration
 
 The tool reads a `[tool.workspace_backup]` table from the nearest `pyproject.toml` at or above
-the root of the repository `--repo` names, and refuses an unknown key. A repository that is not a Python project
-needs a `pyproject.toml` at its root just to hold the table. The sample,
+the root of the repository `--repo` names, and refuses an unknown key. A repository that is
+not a Python project needs a `pyproject.toml` at its root just to hold the table. The sample,
 [`git_workspace_backup/samples/sample-config.toml`](git_workspace_backup/samples/sample-config.toml):
 
 ```toml
@@ -160,10 +194,20 @@ setup_doc = "docs/EXAMPLE_SETUP.md"
 List entries are relative paths. The guide's *Configuration* section has the full rules for
 each key.
 
+The sample's `destination` is a scratch folder, so trying it out touches nothing you keep.
+For the upload check, point it at a folder in iCloud Drive instead, whose parent is iCloud
+Drive's own folder:
+
+```toml
+destination = "~/Library/Mobile Documents/com~apple~CloudDocs/workspace-backup"
+```
+
 The sample lists `settings.json` only to show the key's shape. Claude Code's `settings.json`
 can hold API keys in its `env` map; list it only when yours does not.
 
-**Who chooses what leaves the machine.** The table lives in the repository being backed up, so
+#### Who chooses what leaves the machine
+
+The table lives in the repository being backed up, so
 whoever can change that file, a merged pull request included, chooses which files the next run
 copies out. Only the destination is pinned: install bakes it into the agent, and a later edit to
 `destination` takes effect only when you install again. Every other key is read afresh on each
@@ -191,7 +235,7 @@ step. [`git_workspace_backup/samples/README.md`](git_workspace_backup/samples/RE
 one from the sample manifest without touching your machine. On a second machine, its note names
 the Claude files the archive holds, which describe the first machine's setup.
 
-**Nothing authenticates `RESTORE.md`.** It is read back from the destination, and anyone who can
+Nothing authenticates `RESTORE.md`. It is read back from the destination, and anyone who can
 write there can rewrite it, together with the bundles beside it. Read every `sh` block before you
 paste it into a shell.
 
@@ -211,29 +255,18 @@ It is provided as-is, with no warranty. Check a restore by hand before you rely 
 
 ## Running the tests
 
-The suites need Hypothesis. `pip install ".[test]"` does not work here, since the repository
-declares no build system, so install it directly into a Python 3.12 virtual environment, at the
-exact version the `test` list in `pyproject.toml` names, in place of `<version>` below. Run
-every command in this section from the clone's root, after `cd development-tools`:
+The `test` extra from [Install](#install) brings Hypothesis, which the suites need. With the
+venv active, each suite runs from its own folder's test file, from the clone's root:
 
 ```bash
-python3.12 -m venv .venv
-export PATH="$PWD/.venv/bin:$PATH"
-python3.12 -m pip install "hypothesis==<version>"
-```
-
-The second line puts the environment's `python3.12` first on `PATH` in that shell. Then each
-suite runs from its own folder's test file, still from the clone's root:
-
-```bash
-python3.12 git_workspace_backup/test_git_workspace_backup.py
-python3.12 atomic_write/test_atomic_write.py
-python3.12 bounded_run/test_bounded_run.py
-python3.12 help_formatter/test_help_formatter.py
-python3.12 live_pid_guard/test_live_pid_guard.py
-python3.12 pyproject_config/test_pyproject_config.py
-python3.12 schedule_artifacts/test_schedule_artifacts.py
-python3.12 stdio_utf8/test_stdio_utf8.py
+python git_workspace_backup/test_git_workspace_backup.py
+python atomic_write/test_atomic_write.py
+python bounded_run/test_bounded_run.py
+python help_formatter/test_help_formatter.py
+python live_pid_guard/test_live_pid_guard.py
+python pyproject_config/test_pyproject_config.py
+python os_schedule_gen/test_os_schedule_gen.py
+python stdio_utf8/test_stdio_utf8.py
 ```
 
 Two tests run the real `osascript` on temporary files; `WORKSPACE_BACKUP_OFFLINE=1` skips them.

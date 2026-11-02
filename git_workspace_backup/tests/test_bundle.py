@@ -266,7 +266,7 @@ class BundleTests(unittest.TestCase):
 
     def test_counting_changes_never_rewrites_a_worktrees_index(self) -> None:
         # A stale stat makes a plain `git status` refresh and rewrite the index under
-        # index.lock -- the lock a commit the user is making at that moment needs.
+        # index.lock, the lock a commit the user is making at that moment needs.
         future = time.time() + _FUTURE_S
         os.utime(self.repo / "README.md", (future, future))
         index = self.repo / ".git" / "index"
@@ -391,7 +391,7 @@ class GitOutputTests(unittest.TestCase):
         assert result.failure is not None
         self.assertEqual(result.failure.item, "w")
         # Named for the directory mkdir could not make. A runner answering every git command
-        # would otherwise fail this bundle later -- "bundle lacks refs" -- under the same item.
+        # would otherwise fail this bundle later ("bundle lacks refs") under the same item.
         self.assertIn(str(blocker / "memory"), result.failure.reason)
 
     def test_a_worktree_listing_that_fails_or_names_no_worktree_raises(self) -> None:

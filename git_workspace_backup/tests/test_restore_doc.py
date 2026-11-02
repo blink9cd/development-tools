@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""RESTORE.md's commands actually restore -- proven by running them.
+"""RESTORE.md's commands actually restore, proven by running them.
 
 Only a fence whose info string is exactly ``sh`` is ever extracted, so the steps that
 overwrite a home directory, kept in ``text`` fences, never run. A manifest value that could
-end a fence early -- turning the text after it into a block that does run -- is refused
+end a fence early, turning the text after it into a block that does run, is refused
 before anything is rendered, and so is a head that is not a full object id.
 
 The round trips build a real snapshot from fixture repositories and run every extracted

@@ -5,17 +5,16 @@ This is the shape that defeats a bare ``subprocess.run(timeout=...)``: the grand
 the captured stdout/stderr handles, so killing only the direct child leaves them open and the
 parent's post-timeout read blocks forever. The live timeout tests here drive it.
 
-When the environment names two pid files, it records its own pid in the first -- before the
-grandchild exists -- and the grandchild's in the second. Neither process exits before
+When the environment names two pid files, it records its own pid in the first (before the
+grandchild exists) and the grandchild's in the second. Neither process exits before
 ``_LIFETIME_SECONDS``, an hour, so a test that cannot see both gone needs the pids to kill a
-survivor itself; ``live_pid_guard`` sets the variables and does that cleanup. With neither set, as ``README.md`` runs it, it records
-nothing.
+survivor itself; ``live_pid_guard`` sets the variables and does that cleanup. With neither set,
+as ``README.md`` runs it, it records nothing.
 
-The environment and not argv, because a tool under test may launch this fixture AS its own
-subprocess and append flags of its own. Positional pid files would take those flags for paths:
-the fixture would write its pid into a file named ``--path`` beside the caller, then crash
-writing to the directory after it -- so the wedged child such a test models would already have
-exited while the test passed.
+The environment and not argv, because a tool under test may launch this fixture as its own
+subprocess and append flags of its own. Positional pid files took those flags for paths: the
+fixture wrote its pid into a file named ``--path`` beside the caller, then crashed writing to the
+directory after it, so the wedged child those tests model had already exited while they passed.
 """
 
 import os
@@ -53,14 +52,16 @@ def _record_pid(env_name: str, pid: int) -> None:
         Path(pid_file).write_text(str(pid), encoding="utf-8", newline="\n")
 
 
-# The grandchild is deliberately abandoned -- a process that outlives its parent while holding the
-# inherited pipes IS the condition under test. The suppression has to sit on the flagged line
+# The grandchild is deliberately abandoned: a process that outlives its parent while holding the
+# inherited pipes is the condition under test. The suppression has to sit on the flagged line
 # itself; on the lines above it parses but never applies, which is silent and was worth learning.
-# The handle is bound only to read its pid, which RL002 does not count as managing the process,
-# so the finding stands; the reason is kept short so that line still fits the formatter's width.
+# The marker silences RL002, a reliability linter's rule against a Popen whose process is
+# abandoned. The handle is bound only to read its pid, which that rule does not count as
+# managing the process, so the finding stands; the reason is kept short so that line still fits
+# the formatter's width.
 #: Bound to a name so the Popen call plus its suppression fit inside the formatter's line width.
 #: Inlining the argv pushes the line past it, and `ruff format` then explodes the call across
-#: lines -- which silently moves the pragma off the flagged line and stops it applying.
+#: lines, which silently moves the pragma off the flagged line and stops it applying.
 _GRANDCHILD = [sys.executable, "-c", _GRANDCHILD_PROGRAM]
 
 _record_pid(_CHILD_PID_ENV, os.getpid())

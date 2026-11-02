@@ -1,15 +1,15 @@
 """Start a ``bounded_run`` child and register it at once, so no stop can orphan it.
 
-Private to ``bounded_run``: it lives in that folder's ``src/``, and nothing outside that
-folder imports it. Its name carries the tool's prefix, so it cannot shadow another tool's
+Private to ``bounded_run``: it sits in that tool's own ``src/`` folder, so nothing outside the
+tool folder imports it. Its name carries the tool's prefix, so it cannot shadow another tool's
 module on ``sys.path``.
 
 Why the spawn is its own module
 -------------------------------
-``bounded_run.py`` sat at the file-length bar, and the spawn is a seam of its own: which
-streams the child gets, how it is detached from the caller's session, and which flags it
-starts with. ``bounded_run`` still computes those flags (``spawn_creationflags``) and passes
-them in, so its tests can substitute them where they always have.
+Splitting it out keeps ``bounded_run.py`` to a reviewable length, and the spawn is a seam of
+its own: which streams the child gets, how it is detached from the caller's session, and which
+flags it starts with. ``bounded_run`` still computes those flags (``spawn_creationflags``) and
+passes them in, so its tests can substitute them where they always have.
 
 The spawn-to-track window
 -------------------------
@@ -17,10 +17,10 @@ A child leads a session of its own, so a stop signal sent to the caller never re
 caller's handler reaches it only through ``kill_live_trees``, which kills the children the
 registry holds. :func:`run_text` and :func:`run_bytes` therefore call ``Popen`` and register the
 pid in one frame, on consecutive statements, with nothing between: no frame hands the object
-back to a caller first, so no frame return -- where a debugger's or a pure-Python coverage
-tracer's code runs, and with it a pending signal's handler -- falls between them. A
-``KeyboardInterrupt`` raised before the registration completes -- the stop such a handler
-raises, landing on the call that registers -- finds the child unreachable through the registry,
+back to a caller first, so no frame return (where a debugger's or a pure-Python coverage
+tracer's code runs, and with it a pending signal's handler) falls between them. A
+``KeyboardInterrupt`` raised before the registration completes (the stop such a handler
+raises, landing on the call that registers) finds the child unreachable through the registry,
 so this module kills its tree and reaps it before re-raising. Should *kill_tree_fn* itself
 raise there, its exception replaces the interrupt, which it keeps as ``__context__``, exactly
 as on the drain's interrupt path.
@@ -34,8 +34,8 @@ returns a Python-level tracer or profiler would add. The residual at ``Popen``'s
 completion, below, is unchanged.
 
 Once registered, the child is forgotten by a ``finally`` in that same frame, around both the
-registration and the drain, so no frame entry -- the drain's own included, a point CPython does
-check with no tracer at all -- falls between the registration and the guard that forgets. The
+registration and the drain, so no frame entry (the drain's own included, a point CPython does
+check with no tracer at all) falls between the registration and the guard that forgets. The
 interrupt guard spans the drain as well, so an interrupt after the registration but before the
 drain's own interrupt path is in force kills and reaps the child too, and a caller that never
 calls ``kill_live_trees`` orphans nothing. An interrupt the drain's own path already acted on
@@ -46,7 +46,7 @@ already reaped is not signaled again either: its pid may have been reused.
 What stays out of reach is an interrupt delivered inside ``Popen``'s own call, before that call
 hands the object back: in ``Popen``'s code after the child has started, at the pending-signal
 check the interpreter makes as the call instruction completes, or in a hook run per instruction.
-No object reaches this frame, so nothing here can name the child, and it is LEFT RUNNING in its
+No object reaches this frame, so nothing here can name the child, and it is left running in its
 own session; CPython at most reaps it after it exits on its own (``bounded_run.md``, property 8).
 
 Entry point assumptions
@@ -118,8 +118,8 @@ def run_text(
 
     The registration is the statement right after ``Popen``, in this frame, with nothing
     between: no frame returns the object first. An interrupt raised anywhere after ``Popen``
-    returns -- before the registration completes, or after it but before the drain's own
-    interrupt path is in force -- kills the child's tree through *kill_tree_fn* and reaps it,
+    returns (before the registration completes, or after it but before the drain's own
+    interrupt path is in force) kills the child's tree through *kill_tree_fn* and reaps it,
     then propagates: a caller need not call ``kill_live_trees`` for the child to stop. Only
     ``KeyboardInterrupt`` is caught, as in the drain's own interrupt path: a ``SystemExit`` is
     the caller's own decision, not an interruption of the child.

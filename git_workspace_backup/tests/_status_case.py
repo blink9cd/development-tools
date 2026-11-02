@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Shared status facts: a healthy destination, the snapshot names around it, and the clock.
 
-Deliberately NOT named ``test_*``, so the aggregator's discover skips it. Both status suites
+Deliberately not named ``test_*``, so the aggregator's discover skips it. Both status suites
 build every case as a ``replace`` of :data:`HEALTHY`, so each case differs from health in
 exactly the fields it names.
 """

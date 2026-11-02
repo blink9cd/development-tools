@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The three POSIX artifacts, field by field -- each field is load-bearing.
+"""The three POSIX artifacts, field by field: each field is load-bearing.
 
 Where the unit files go, and what they contain. The Windows XML lives with the
 schedule model instead: it carries no PATH bake and no user-scope location, so it has
@@ -13,12 +13,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import schedule_artifacts as sa
+import os_schedule_gen as sa
 from _fixtures import FAKE_PATH, FAKE_PYTHON, FAKE_SCRIPT
 
 
 class UnitLocationTests(unittest.TestCase):
-    """Where each POSIX backend's files go -- always under an injectable home.
+    """Where each POSIX backend's files go: always under an injectable home.
 
     These are pure path arithmetic, so the base is a temp directory rather than a
     literal ``/home/<name>``: a home-rooted absolute path names a machine's user, which
@@ -38,7 +38,7 @@ class UnitLocationTests(unittest.TestCase):
 
     def test_systemd_units_follow_xdg_config_home_when_it_is_set(self) -> None:
         """Writing to ~/.config on a box that relocated it installs a unit systemd
-        never reads -- the quietest possible failure, so the variable is honored."""
+        never reads, the quietest possible failure, so the variable is honored."""
         relocated = self.home / "elsewhere-cfg"
         self.assertEqual(
             sa.systemd_unit_dir(self.home, environ={"XDG_CONFIG_HOME": str(relocated)}),
@@ -58,7 +58,7 @@ class UnitLocationTests(unittest.TestCase):
 
 
 class SystemdUnitContentTests(unittest.TestCase):
-    """The generated units, field by field -- each field is load-bearing."""
+    """The generated units, field by field: each field is load-bearing."""
 
     def setUp(self) -> None:
         self.service, self.timer = sa.build_systemd_units(
@@ -72,19 +72,19 @@ class SystemdUnitContentTests(unittest.TestCase):
         self.assertIn("Type=oneshot", self.service)
 
     def test_the_service_bakes_the_register_time_path(self) -> None:
-        """Without this the unit inherits the user MANAGER's environment, which is a
-        bare distro PATH -- so every backend outside /usr/bin reports could-not-run and
+        """Without this the unit inherits the user manager's environment, which is a
+        bare distro PATH, so every backend outside /usr/bin reports could-not-run and
         the week's verdict says nothing. Measured: 9 entries against 71 interactively."""
         self.assertIn(f'Environment="PATH={FAKE_PATH}"', self.service)
 
     def test_a_percent_in_the_path_is_doubled_so_systemd_keeps_the_assignment(
         self,
     ) -> None:
-        """Regression for a SILENT drop, not a loud failure.
+        """Regression for a silent drop, not a loud failure.
 
         systemd resolves specifiers inside Environment=, and an unrecognized one makes
-        it discard the whole assignment -- "Failed to resolve specifiers in PATH=...,
-        ignoring". The unit then installs cleanly, passes `systemd-analyze verify`, and
+        it discard the whole assignment ("Failed to resolve specifiers in PATH=...,
+        ignoring"). The unit then installs cleanly, passes `systemd-analyze verify`, and
         carries no PATH at all; the only symptom is a useless verdict a week later.
         Confirmed against real systemd, which accepts the doubled form.
         """
@@ -126,7 +126,9 @@ class SystemdUnitContentTests(unittest.TestCase):
 
     def test_the_timer_names_its_calendar_and_its_service(self) -> None:
         self.assertIn("OnCalendar=Sun 03:00", self.timer)
-        self.assertIn(f"Unit={sa.SYSTEMD_UNIT_BASENAME}.service", self.timer)
+        self.assertIn("Unit=weekly-sweep.service", self.timer)
+        self.assertIn("Description=Weekly maintenance sweep\n", self.service)
+        self.assertIn("Description=Weekly maintenance sweep\n", self.timer)
 
     def test_the_timer_installs_into_timers_target(self) -> None:
         """Without [Install] WantedBy, `systemctl enable` has nothing to link."""
@@ -141,16 +143,16 @@ class SystemdUnitContentTests(unittest.TestCase):
         ``Path(script).parent`` is ``WindowsPath`` on Windows, so generating this unit
         from a Windows process produced ``WorkingDirectory=\\tmp\\spaced dir`` and real
         systemd rejected the unit with "path is not absolute". Every faked run seam had
-        accepted it; only the live `systemd-analyze verify` caught it.
+        accepted it; only a live `systemd-analyze verify` caught it.
 
-        This test reproduces the defect WITHOUT the bridge -- it fails on Windows under
-        the old code and passes under ``PurePosixPath`` -- so the fix stays pinned on a
-        machine with no WSL, which the live test cannot promise.
+        This test reproduces the defect without any systemd (it fails on Windows under
+        a plain ``Path`` and passes under ``PurePosixPath``), so the fix stays pinned on
+        a machine that has none.
         """
         service, _timer = sa.build_systemd_units(
             sa.WeeklySchedule(weekday="Sunday", hour=3, minute=0),
             "/usr/bin/python3",
-            "/opt/kit/utilities/gate_tree_sweep/gate_tree_sweep.py",
+            "/opt/example/sweep/weekly_sweep.py",
             FAKE_PATH,
         )
         line = next(
@@ -158,7 +160,7 @@ class SystemdUnitContentTests(unittest.TestCase):
             for entry in service.splitlines()
             if entry.startswith("WorkingDirectory=")
         )
-        self.assertEqual(line, "WorkingDirectory=/opt/kit/utilities/gate_tree_sweep")
+        self.assertEqual(line, "WorkingDirectory=/opt/example/sweep")
         self.assertNotIn("\\", line)
 
 
@@ -172,7 +174,7 @@ class LaunchdPlistContentTests(unittest.TestCase):
     """
 
     def setUp(self) -> None:
-        self.state = Path("/var/state/gate_tree_sweep")
+        self.state = Path("/var/state/weekly_sweep")
         self.plist = plistlib.loads(
             sa.build_launchd_plist(
                 sa.WeeklySchedule(weekday="Wednesday", hour=13, minute=45),
@@ -186,7 +188,7 @@ class LaunchdPlistContentTests(unittest.TestCase):
     def test_the_plist_bakes_the_path_with_no_escaping_of_its_own(self) -> None:
         """A LaunchAgent gets a minimal environment for the same reason a systemd unit
         does. plistlib owns the serialization, so unlike the systemd form this needs no
-        specifier doubling and no quoting -- a space in an entry survives untouched."""
+        specifier doubling and no quoting: a space in an entry survives untouched."""
         spaced = plistlib.loads(
             sa.build_launchd_plist(
                 sa.WeeklySchedule(weekday="Wednesday", hour=13, minute=45),
@@ -231,7 +233,7 @@ class LaunchdPlistContentTests(unittest.TestCase):
 
     def test_a_dead_run_leaves_output_somewhere_readable(self) -> None:
         """launchd discards a dead job's streams, and this tool's own log is never
-        opened if it dies early -- so the plist redirects both into the state dir."""
+        opened if it dies early, so the plist redirects both into the state dir."""
         self.assertEqual(
             self.plist["StandardOutPath"], str(self.state / "logs" / "launchd.out.log")
         )
@@ -255,7 +257,7 @@ class CronLineTests(unittest.TestCase):
 
     def test_the_path_is_scoped_to_this_command_not_the_whole_crontab(self) -> None:
         """A bare `PATH=` line in a crontab applies to every job below it, including
-        the operator's unrelated ones -- the same shared-file hazard that makes this
+        the operator's unrelated ones: the same shared-file hazard that makes this
         backend emit-only in the first place. `VAR=value cmd` is valid sh, and cron
         hands the command to sh, so an inline prefix binds it to this job alone."""
         line = sa.build_cron_line(
@@ -292,20 +294,20 @@ class WeeklyPlistDefaultsTests(unittest.TestCase):
     def test_the_weekly_defaults_are_byte_identical_to_before(self) -> None:
         """Regression pin: a caller passing no keywords gets the bytes it always got.
 
-        The expected side is plistlib's rendering of a LITERAL dict -- the plist as built
-        before ``label``/``args``/``run_at_load`` existed -- not a stored digest. A digest
+        The expected side is plistlib's rendering of a literal dict (the plist as built
+        before ``label``/``args``/``run_at_load`` existed), not a stored digest. A digest
         is host-dependent here: the log paths come from a host ``Path``, so a Windows
         process renders them with backslashes and hashes differently. Building those two
         paths the same host-relative way keeps the pin portable, and a bytes comparison
         shows the diff a bare hash hides.
         """
-        state = Path("/var/state/gate_tree_sweep")
+        state = Path("/var/state/weekly_sweep")
         expected = plistlib.dumps(
             {
-                "Label": "local.gate-tree-sweep.weekly",
+                "Label": "local.weekly-sweep",
                 "ProgramArguments": [FAKE_PYTHON, FAKE_SCRIPT, "--mode", "run"],
                 "StartCalendarInterval": {"Weekday": 3, "Hour": 13, "Minute": 45},
-                "WorkingDirectory": "/opt/kit/utilities/gate_tree_sweep",
+                "WorkingDirectory": "/opt/example/sweep",
                 "StandardOutPath": str(state / "logs" / "launchd.out.log"),
                 "StandardErrorPath": str(state / "logs" / "launchd.err.log"),
                 "RunAtLoad": False,
@@ -341,7 +343,7 @@ class DailyLaunchdPlistTests(unittest.TestCase):
         )
 
     def test_a_daily_interval_has_no_weekday_key(self) -> None:
-        """launchd reads an ABSENT Weekday as every day; a zero would mean Sunday."""
+        """launchd reads an absent Weekday as every day; a zero would mean Sunday."""
         self.assertEqual(self.plist["StartCalendarInterval"], {"Hour": 6, "Minute": 0})
 
     def test_the_label_keyword_names_the_job(self) -> None:
@@ -394,7 +396,7 @@ class EveryHourPlistTests(unittest.TestCase):
                 schedule,
                 FAKE_PYTHON,
                 FAKE_SCRIPT,
-                Path("/var/state/gate_tree_sweep"),
+                Path("/var/state/weekly_sweep"),
                 FAKE_PATH,
                 every_hour=every_hour,
             )

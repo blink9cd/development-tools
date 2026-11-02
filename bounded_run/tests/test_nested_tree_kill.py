@@ -1,9 +1,10 @@
-"""The live boundary for a NESTED bounded run: killing the outer tree must take the inner one too.
+"""The live boundary for a nested bounded run: killing the outer tree must take the inner one too.
 
 ``run_bounded`` starts every child in a new session. A child that itself calls ``run_bounded``
 therefore starts a grandchild leading a session of its own, which a kill of the outer child's
-process group alone never reaches -- measured on a scheduled job of nested tools, where a
-deadline kill of the outer one left a nested run writing results for 35 minutes afterward.
+process group alone never reaches. Measured on a scheduled job of nested tools: after a
+deadline kill of its outer tool, a nested run that tool had started kept writing results for 35
+minutes.
 
 Nothing here is faked: the tree is real processes, and survival is polled for, never inferred
 from a fixed sleep. On Windows, where this pid is not one ``run_bounded`` started, the kill takes

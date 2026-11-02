@@ -22,8 +22,8 @@ def fresh_staging(staging_root: Path, name: str) -> Path:
     """A new, empty ``staging_root/name``, once every stale staging folder is gone.
 
     Raises StagingError when *staging_root* exists as anything but a plain directory, or cannot
-    be examined -- the children of a symlink's target are not staging's to sweep or fill, and
-    sweep_staging quietly sweeps nothing there -- when a stale folder cannot be removed, or
+    be examined (the children of a symlink's target are not staging's to sweep or fill, and
+    sweep_staging quietly sweeps nothing there), when a stale folder cannot be removed, or
     when the folder already exists. It is made without ``exist_ok``, because a file found in
     staging is taken as this build's own (a failed bundle's file is named as kept), which is
     true only of a folder this run created.

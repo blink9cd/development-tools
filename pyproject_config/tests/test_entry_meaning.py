@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""What a resolved config entry MEANS: a subtree, and one that can rot.
+"""What a resolved config entry means: a subtree, and one that can rot.
 
 Separated from the reading suites because these two functions touch no pyproject at
-all. They encode the half of the contract that drifts most quietly -- every tool
+all. They encode the half of the contract that drifts most quietly: every tool
 re-decides "does this exclude cover the files below it?" and "what happens when a
 configured path goes away?" in passing, and both wrong answers report PASS.
 """

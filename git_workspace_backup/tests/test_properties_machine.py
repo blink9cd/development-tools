@@ -4,7 +4,7 @@ The conventions are test_properties.py's: every ``# fuzz-target`` subject has a 
 ``@given`` ``test_fuzz_<name>`` here, run by the TestCase at the bottom, and the shared
 deterministic profile is loaded before any ``@given`` is defined.
 
-What they are FOR: the label becomes the tail of every snapshot folder name, so whatever a
+What they are for: the label becomes the tail of every snapshot folder name, so whatever a
 host name holds, the label derived from it must be one plain, path-safe component, and the
 validator must accept exactly the labels derivation can produce. The rule is restated here as
 a regular expression, so the subject's own pattern cannot also be the thing that judges it.

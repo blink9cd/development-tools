@@ -5,7 +5,7 @@ The conventions are test_properties.py's: every ``# fuzz-target`` subject has a 
 deterministic profile is loaded before any ``@given`` is defined. Kept out of that file, which
 is near the length cap.
 
-What they are FOR: the parsed text is osascript's stdout, and a wrong parse is the one way
+What they are for: the parsed text is osascript's stdout, and a wrong parse is the one way
 status could take an unknown upload state for "uploaded". So the parser must never raise, must
 accept only exactly the expected number of entries, each exactly two JSON booleans, and what
 it accepts must be what the text says. The answer-shaped arm exists because random text and

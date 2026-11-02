@@ -117,8 +117,8 @@ class AtomicWriteSafetyTests(unittest.TestCase):
 
     def test_a_symlink_at_the_old_fixed_temp_name_is_never_touched(self) -> None:
         # The temp file used to be the fixed <name>.tmp: a symlink planted there was
-        # written THROUGH into its target, and the rename then put the link itself in
-        # the state file's place -- or the snapshot manifest's, on its way to iCloud.
+        # written through into its target, and the rename then put the link itself in
+        # the state file's place, or the snapshot manifest's on its way to iCloud.
         for kind, write in _WRITERS.items():
             with self.subTest(kind):
                 root = self.scratch()
@@ -365,8 +365,8 @@ class FixtureTests(unittest.TestCase):
         """A GIT_* redirect exported by an enclosing git hook must not retarget fixture git.
 
         Each variable is aimed at a separate throwaway repository. Building a fixture repo and
-        committing to it -- through the fixture helper, and through the tool's own runner
-        inside ``isolated_git_env`` -- must land every commit in the fixture repo and leave
+        committing to it, through the fixture helper and through the tool's own runner
+        inside ``isolated_git_env``, must land every commit in the fixture repo and leave
         the other repository's history and index, and a foreign objects directory, untouched.
         """
         run_git = backup_proc.git_runner(backup_proc.run_cmd)

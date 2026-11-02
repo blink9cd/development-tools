@@ -20,8 +20,8 @@ live tests then prove by pid, with a bounded wait, that no child survives. The u
 the arm where ``Popen`` itself is interrupted and so returned nothing to kill.
 
 Once registered, the child is reachable through ``kill_live_trees``, and what remains is that its
-pid is forgotten however the run ends. An interrupt raised at the drain's frame entry -- a point
-CPython checks for a pending signal with no tracer installed -- or at the first trace event after
+pid is forgotten however the run ends. An interrupt raised at the drain's frame entry (a point
+CPython checks for a pending signal with no tracer installed) or at the first trace event after
 the registration, must still leave the registry empty.
 """
 
@@ -131,30 +131,55 @@ class SpawnWindowLiveTests(unittest.TestCase):
 
 
 class _InterruptAfterSpawn:
-    """A tracer that raises a stop signal at the first trace event after ``Popen`` returns.
+    """A tracer that raises a stop signal at the first event in ``Popen``'s caller after it returns.
 
     Installed with ``sys.settrace``, it is what a debugger or a pure-Python coverage tracer is: a
     Python function the interpreter calls on each call, line and return. Its own bytecode is
     where CPython runs a pending signal's handler, so the signal is raised from inside it, and
     the handler's interrupt propagates out of the traced frame. Arming on the return of
-    ``Popen.__init__`` means the child exists and nothing before it is touched.
+    ``Popen.__init__`` means the child exists and nothing before it is touched. It fires only in
+    the frame that called ``Popen``: on Windows the first event after the return is the dropped
+    thread handle's finalizer, where an interrupt is only reported as ignored.
     """
 
     def __init__(self) -> None:
         """Start disarmed; :attr:`pid` is set once ``Popen.__init__`` returns."""
         self.pid: int | None = None
+        self.caller: FrameType | None = None
         self.fired = False
 
     def __call__(self, frame: FrameType, event: str, _arg: object) -> Any:
-        """Arm on ``Popen.__init__``'s return; raise the stop signal at the next event."""
+        """Arm on ``Popen.__init__``'s return; raise the stop signal back in its caller."""
         if self.fired:
             return None
-        if self.pid is not None:
+        if self.pid is not None and frame is self.caller:
             self.fired = True
             signal.raise_signal(signal.SIGINT)
         if event == "return" and frame.f_code is subprocess.Popen.__init__.__code__:
             self.pid = frame.f_locals["self"].pid
+            self.caller = frame.f_back
         return self
+
+
+class InterruptAfterSpawnTracerTests(unittest.TestCase):
+    """The tracer fires in the frame that called ``Popen``, never in a frame between."""
+
+    def test_an_event_in_another_frame_does_not_fire_it(self) -> None:
+        # On Windows the first event after Popen returns is the call of the dropped thread
+        # handle's finalizer, Handle.Close, where a raised interrupt is only reported as
+        # "Exception ignored": the run went on, and the live test hung (toolkit 182).
+        caller = mock.Mock(f_back=None)
+        popen = mock.Mock(f_code=subprocess.Popen.__init__.__code__, f_back=caller)
+        popen.f_locals = {"self": mock.Mock(pid=4321)}
+        finalizer = mock.Mock(f_back=caller)
+        tracer = _InterruptAfterSpawn()
+        with mock.patch.object(signal, "raise_signal") as raise_signal:
+            tracer(popen, "return", None)
+            tracer(finalizer, "call", None)
+            raise_signal.assert_not_called()
+            tracer(caller, "line", None)
+        raise_signal.assert_called_once_with(signal.SIGINT)
+        self.assertEqual((tracer.pid, tracer.fired), (4321, True))
 
 
 class SpawnReturnLiveTests(unittest.TestCase):

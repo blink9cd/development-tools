@@ -1,0 +1,10 @@
+[Unit]
+Description=Scheduled job nightly-report
+
+[Timer]
+OnCalendar=*-*-* 02:30
+Persistent=true
+Unit=nightly-report.service
+
+[Install]
+WantedBy=timers.target

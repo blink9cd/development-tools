@@ -5,8 +5,8 @@ once and returns None. ``bool`` is refused where an ``int`` is expected, because
 ``isinstance(True, int)`` holds in Python and a record saying ``"size": true`` is not one
 this tool wrote.
 
-Every record file shares one envelope -- ``tool`` and ``schema`` beside the record's own
-fields, as sorted, indented JSON -- so it is written and opened here, once. The name rule
+Every record file shares one envelope (``tool`` and ``schema`` beside the record's own
+fields, as sorted, indented JSON), so it is written and opened here, once. The name rule
 lives here for the same reason: the manifest and the ledger must agree on what a name that
 cannot leave its directory is; and so does the form names are compared in, as APFS compares
 them, which status and the restore document's checks share.
@@ -75,7 +75,7 @@ def as_object(value: object) -> dict[str, object]:
 
 
 def require_keys(obj: dict[str, object], keys: frozenset[str]) -> None:
-    """ShapeError unless *obj* has exactly *keys* -- an extra key is a schema this tool never wrote."""
+    """ShapeError unless *obj* has exactly *keys*: an extra key is a schema this tool never wrote."""
     if set(obj) != keys:
         raise ShapeError(f"expected keys {sorted(keys)}, found {sorted(obj)}")
 

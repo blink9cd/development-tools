@@ -20,7 +20,7 @@ from pathlib import Path
 import _fixtures as fx
 
 import backup_launchd as bl
-import schedule_artifacts
+import os_schedule_gen
 from backup_proc import LAUNCHCTL_TIMEOUT_S, NOT_STARTED_RC, TIMEOUT_RC
 from backup_status import AGENT_ABSENT, AGENT_LOADED, AGENT_UNKNOWN
 
@@ -114,7 +114,7 @@ class LaunchdTests(unittest.TestCase):
             script=Path(
                 "/opt/fixture-kit/projects/development_tools/git_workspace_backup/git_workspace_backup.py"
             ),
-            schedule=schedule_artifacts.DailySchedule(hour=6, minute=0),
+            schedule=os_schedule_gen.DailySchedule(hour=6, minute=0),
             git_path="/opt/fixture-git/bin/git",
             uid=FIXTURE_UID,
             destination=Path("/opt/fixture-dest"),
@@ -169,7 +169,7 @@ class LaunchdTests(unittest.TestCase):
         self.assertEqual(
             plist["EnvironmentVariables"]["PATH"], "/opt/fixture-git/bin:/usr/bin:/bin"
         )
-        logs = schedule_artifacts.logs_dir(self.spec.state_base)
+        logs = os_schedule_gen.logs_dir(self.spec.state_base)
         self.assertEqual(Path(plist["StandardErrorPath"]).parent, logs)
 
     def test_a_named_repository_follows_the_agent_args_and_none_adds_nothing(
@@ -191,8 +191,8 @@ class LaunchdTests(unittest.TestCase):
 
     def test_the_default_time_path_and_plist_location(self) -> None:
         self.assertEqual(
-            schedule_artifacts.parse_daily_time(bl.DEFAULT_TIME),
-            schedule_artifacts.DailySchedule(hour=6, minute=0),
+            os_schedule_gen.parse_daily_time(bl.DEFAULT_TIME),
+            os_schedule_gen.DailySchedule(hour=6, minute=0),
         )
         # git in a system directory is not repeated on PATH.
         self.assertEqual(bl.baked_path("/usr/bin/git"), "/usr/bin:/bin")
@@ -303,7 +303,7 @@ class LaunchdTests(unittest.TestCase):
                 )
                 self.assertEqual(launchctl.seen[0], ("bootout", True))
                 self.assertEqual(set(runner.bounds), {(None, LAUNCHCTL_TIMEOUT_S)})
-                self.assertTrue(schedule_artifacts.logs_dir(spec.state_base).is_dir())
+                self.assertTrue(os_schedule_gen.logs_dir(spec.state_base).is_dir())
                 self.assertEqual(target.read_bytes(), bl.render_plist(spec))
                 self.assertEqual(self.err.getvalue(), "")
 
@@ -359,7 +359,7 @@ class LaunchdTests(unittest.TestCase):
                     "still absent",
                 ),
             ),
-            "not loaded afterwards": (
+            "not loaded afterward": (
                 FakeLaunchctl([absent]),
                 ["bootout", "print", "bootstrap", *["print"] * 5],
                 ("still absent",),

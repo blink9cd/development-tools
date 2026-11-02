@@ -8,7 +8,7 @@ is loaded before any ``@given`` runs, and as a profile rather than a decorator, 
 campaign may apply its own settings object and Hypothesis refuses a second one on a
 decorated function.
 
-What they are FOR: prune decides deletions by reading manifests and a ledger that may be
+What they are for: prune decides deletions by reading manifests and a ledger that may be
 truncated, stale or foreign, so these parsers must never raise, must accept only names that
 stay inside the directory they are joined to, must refuse a record with any one field
 missing or of the wrong kind (a manifest's, in test_properties_manifest_fields.py), and
@@ -16,8 +16,8 @@ whatever they accept must survive a serialize-parse round trip. Coverage is carr
 test_records.py.
 
 Drift is judged from git's own output and from config patterns, so the status parser must
-never raise, must list exactly the ignored records -- never a rename's original path, which
-git prints as a bare record that can itself read like a status line -- and the pattern
+never raise, must list exactly the ignored records (never a rename's original path, which
+git prints as a bare record that can itself read like a status line), and the pattern
 matcher must agree with a direct backtracking search while never itself backtracking.
 Coverage is carried by test_drift.py.
 
@@ -185,7 +185,7 @@ def _chosen_field(document: str, choice: int) -> tuple[int, str]:
 
 def _variants_with_one_field_broken(document: str, choice: int) -> list[bytes]:
     """*document* broken at one field: deleted first, then joined by an unexpected key,
-    then given a value of each wrong kind -- one variant apiece.
+    then given a value of each wrong kind: one variant apiece.
 
     The field is _chosen_field's, so a reader that skips a check anywhere in the tree is
     reachable. The unexpected-key variant is what reaches a reader that stops calling

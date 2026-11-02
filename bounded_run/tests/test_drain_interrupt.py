@@ -3,7 +3,7 @@
 
 Every child starts in a session of its own, so the terminal's SIGINT reaches only the caller.
 Without this path a Ctrl-C during a long run left the child running unattended: an interactive
-tool that said "stopped" could still be changing files after it said so. The fakes pin the
+tool that said "stopped" could still be writing files or making changes unseen. The fakes pin the
 order (kill, bounded reap, re-raise); the live test interrupts a real tree and probes it is gone.
 """
 

@@ -1,6 +1,14 @@
+[build-system]
+# 77 is the first setuptools to accept the SPDX `license` string in [project] (PEP 639).
+# Bounded below 85: `pip install '.[test]'` into a fresh Python 3.12 venv resolved
+# setuptools 84.2.1 and installed cleanly, and a new major may change how it reads this
+# flat layout.
+requires = ["setuptools>=77,<85"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "development-tools"
-version = "0.1.0"
+version = "0.2.0"
 description = "Tools for working with a git workspace: a daily, verified backup of a checkout's un-pushed work to iCloud Drive"
 readme = "README.md"
 license = "AGPL-3.0-or-later"
@@ -16,12 +24,19 @@ dependencies = []
 # Tests only: nothing at runtime imports it.
 test = ["hypothesis==6.165.10"]
 
+[tool.setuptools]
+# Deliberately empty. The tool is run directly and puts its sibling folders on sys.path,
+# so nothing here is imported from an installed location: installing this distribution
+# installs its metadata and whichever extra is asked for, never code. Left to
+# auto-discovery, setuptools refuses this flat layout of sibling folders outright.
+packages = []
+
 [tool.ruff]
 target-version = "py312"
 
 [tool.ruff.format]
-# The Python blocks inside the Markdown docs are laid out by hand -- a call shown before
-# and after on a few lines, an API table aligned in columns -- and ruff's formatter would
+# The Python blocks inside the Markdown docs are laid out by hand (a call shown before
+# and after on a few lines, an API table aligned in columns), and ruff's formatter would
 # reflow them into one argument per line. The docs keep their layout; every .py file is
 # still held to the formatter.
 exclude = ["*.md"]
@@ -54,8 +69,8 @@ mypy_path = [
   "$MYPY_CONFIG_FILE_DIR/help_formatter",
   "$MYPY_CONFIG_FILE_DIR/bounded_run",
   "$MYPY_CONFIG_FILE_DIR/bounded_run/src",
-  "$MYPY_CONFIG_FILE_DIR/schedule_artifacts",
-  "$MYPY_CONFIG_FILE_DIR/schedule_artifacts/src",
+  "$MYPY_CONFIG_FILE_DIR/os_schedule_gen",
+  "$MYPY_CONFIG_FILE_DIR/os_schedule_gen/src",
   "$MYPY_CONFIG_FILE_DIR/atomic_write",
   "$MYPY_CONFIG_FILE_DIR/pyproject_config",
   "$MYPY_CONFIG_FILE_DIR/live_pid_guard",
@@ -63,8 +78,9 @@ mypy_path = [
 
 [tool.coverage.run]
 # Branch coverage, not line coverage: a line can run while one side of its condition
-# never does. The one runtime __main__ guard, git_workspace_backup.py's, carries its own
-# `# pragma: no cover`; the others sit in test files, which are run rather than measured.
+# never does. The two runtime __main__ guards, git_workspace_backup.py's and
+# os_schedule_gen.py's, each carry their own `# pragma: no cover`; the others sit in test
+# files, which are run rather than measured.
 branch = true
 
 [tool.coverage.report]
@@ -82,73 +98,3 @@ exclude_also = [
   'pragma:\s*only-on\s+posix\b(?!${OS-})',
   'pragma:\s*only-on\s+win32\b${OS-}',
 ]
-
-# The tables below configure the gates run over this tree before it is published. They are
-# inert for anyone who only runs the tools or their tests.
-
-[tool.gate_cache]
-# check_all's verdict cache reads it: each variable here is folded into the cache key.
-env = ["WORKSPACE_BACKUP_OFFLINE"]
-
-[tool.prose_terms]
-# Shapes this repository's prose does not use: a citation of a document, a numbered
-# decision, or a numbered work item that the reader of this repository has no way to look
-# up. State the rule or the measured fact instead, or cite a doc that ships here. Each
-# entry waives itself: the declaration is not prose.
-#
-# Patterns rather than bare words where a word would trip this code: `item` is also an
-# AppleScript argv index, so only a number of two or more digits after it counts.
-terms = [
-  # prose: ignore[TECHNICAL_NOTES] the declaration itself
-  "TECHNICAL_NOTES",
-]
-
-[tool.prose_terms.patterns]
-# A decision's number: a capital D and one or two digits. Three or more is left legal,
-# because ruff's docstring rule codes (D401 above) have that shape.
-ruling-tag = '(?<![0-9A-Za-z_])(?-i:D)[1-9][0-9]?(?![0-9A-Za-z_])'
-# An instructions file by its file name: a bare word would also ban the plain plural "agents",
-# which a tool about launchd agents needs.
-agents-file = '(?<![0-9A-Za-z_])AGENTS\.md'  # prose: ignore[agents-file] the declaration itself
-# A path into a folder of plans and write-ups.
-plans-path = 'superpowers/(?:specs|plans)/'  # prose: ignore[plans-path] the declaration itself
-# A write-up cited by its kind.
-design-note = '(?<![0-9A-Za-z_])design\s+(?:note|doc)'  # prose: ignore[design-note] the declaration itself
-# A work item's number: two or more digits, so an argv index ("item 2 of argv") stays legal.
-item-tag = '(?<![0-9A-Za-z_])items?\s+[0-9]{2,}'
-# A task number, capitalized as a plan spells it.
-task-tag = '(?<![0-9A-Za-z_])(?-i:Task)\s+[0-9]'
-# A phase or a review round by its number, in digits or as a word.
-phase-round = '(?<![0-9A-Za-z_])(?:phase|round)s?\s+(?:[0-9]+|one|two|three|four|five|six|seven|eight|nine|ten)(?![0-9A-Za-z_])'
-
-[tool.pii_scan]
-# The license names its copyright holder, which is its purpose.
-exclude = ["LICENSE"]
-
-[tool.python_gate]
-# bounded_run ships two fixtures its live boundary tests launch, gc_child.py and
-# nest_child.py, and a human can run either by hand to watch the bound hold. Each is an
-# INPUT a test drives, not a module of the library -- and each does its work at import,
-# gc_child.py never exiting and nest_child.py waiting on it, so neither could be imported
-# by a paired test even in principle.
-exclude = ["bounded_run/samples"]
-
-[tool.samples_presence]
-# Libraries with no CLI: nothing in them runs by hand against a sample input.
-exempt = [
-  "stdio_utf8",
-  "help_formatter",
-  "schedule_artifacts",
-  "atomic_write",
-  "pyproject_config",
-  "live_pid_guard",
-]
-
-[tool.stdio_policy]
-# The whole tree, the vendored libraries included: a library is exactly where a stray
-# print() does not belong.
-paths = ["."]
-
-[tool.dep_audit]
-# Pinning checks only in the inner loop; the network audit is run on demand.
-offline = "skip"

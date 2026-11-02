@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The CLI suites' shared case: a configured fixture tree, and a Host built only of fakes.
 
-Deliberately NOT named ``test_*``, so the aggregator's discover skips it.
+Deliberately not named ``test_*``, so the aggregator's discover skips it.
 
 Every Host a test hands ``main()`` comes from :meth:`CliCase.host`: home, start and the
 destination are temporary directories, and the uid, platform, clock, PATH lookup, host name
@@ -109,7 +109,7 @@ class CliCase(unittest.TestCase):
         (self.tree.workspace / "pyproject.toml").write_text(
             "[tool.workspace_backup]\n"
             f'destination = "{destination}"\n'
-            'extras = [".superpowers"]\n'
+            'extras = [".notes"]\n'
             'regenerable = ["cache", "new_folder"]\n'
             'claude_files = ["settings.json"]\n'
             'home_files = [".zshrc"]\n'

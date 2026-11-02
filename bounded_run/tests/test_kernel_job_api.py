@@ -2,7 +2,7 @@
 
 Each fake kernel32 function is a C function pointer built from bounded_run's own signature table,
 so the adapter's arguments cross the same argtype conversion they cross on Windows. A wrong
-argtype, a structure passed where a handle belongs, or a mis-sized structure fails here -- not
+argtype, a structure passed where a handle belongs, or a mis-sized structure fails here, not
 only on a Windows host these tests cannot assume.
 
 The expected constants below are restated from the Windows documentation on purpose: they are
@@ -27,7 +27,7 @@ _CHILD_PID = 4242
 _OTHER_PID = 999
 
 #: What each call returns on success. Handles are arbitrary, BOOL calls return TRUE, and
-#: ResumeThread returns the previous suspend count -- 1 for a thread created suspended.
+#: ResumeThread returns the previous suspend count: 1 for a thread created suspended.
 _SUCCESS: dict[str, int] = {
     "CreateJobObjectW": _JOB,
     "SetInformationJobObject": 1,
@@ -64,7 +64,7 @@ class _FakeKernel32:
     """kernel32 stand-in whose functions are C function pointers from ``_KERNEL32_SIGNATURES``.
 
     Records every call as ``(name, *args)``, plus each read of the last error, so tests assert
-    the ORDER. Nothing is asserted inside a callback: ctypes swallows an exception raised there.
+    the order. Nothing is asserted inside a callback: ctypes swallows an exception raised there.
     """
 
     def __init__(
@@ -285,7 +285,7 @@ class ResumeTests(unittest.TestCase):
                 self.assertEqual(kernel.names(), names)
 
     def test_a_walk_that_fails_midway_raises_its_own_error(self) -> None:
-        # FALSE from Thread32Next ends a walk both at its end AND on a failure; only the last
+        # FALSE from Thread32Next ends a walk both at its end and on a failure; only the last
         # error tells them apart. Read as the end, this failure would resume a partial list or
         # surface as "no thread found", hiding the real cause on a first Windows run.
         kernel = _FakeKernel32(threads=[(12, _CHILD_PID)], walk_error=_FAKE_WINERROR)

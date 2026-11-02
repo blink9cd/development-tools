@@ -1,17 +1,17 @@
 """Render RESTORE.md for one snapshot, and extract the blocks in it that run.
 
 Every ``sh`` fenced block runs verbatim once SNAPSHOT and RESTORE_ROOT are set to absolute
-paths, and the round-trip test executes exactly those blocks -- so the document cannot drift
+paths, and the round-trip test executes exactly those blocks, so the document cannot drift
 from the commands that actually restore. Steps that overwrite a live home directory, or
 depend on the restored machine, stay in ``text`` blocks: those are a person's decision, not
-a script's. Placing what the restore puts under a Claude project directory -- each restored
-memory corpus, and whatever the archive holds beneath ``claude/projects/<slug>/`` -- is one of
+a script's. Placing what the restore puts under a Claude project directory (each restored
+memory corpus, and whatever the archive holds beneath ``claude/projects/<slug>/``) is one of
 them, since that directory is named for where the workspace was restored.
 
 A block may be run with ``sh -c`` or pasted into an interactive shell, and an interactive
 shell does not exit when a command fails or a ``${NAME:?message}`` expansion fails: it moves
 on to the next line. A block that stored a path in a variable and then failed to set it would
-go on to run ``git -C ""`` -- git in the current directory. So each block is one subshell
+go on to run ``git -C ""``, which is git in the current directory. So each block is one subshell
 under ``set -eu``, which its first failure ends in every shell (measured in ``sh``, ``bash``
 and ``zsh``, run both ways), and every command reads RESTORE_ROOT and SNAPSHOT itself as
 ``${NAME:?message}``, never through a stored path: even a line that did run on would fail
@@ -26,8 +26,8 @@ holds the message it prints.
 
 Extraction takes a fence only when it opens on a line that is exactly the marker followed by
 ``sh`` and closes on a line that is exactly the marker. So a ``text``, ``shell`` or ``sh
-anything`` fence never runs, and a line beginning with the marker before the closer -- a
-fence left open, or a closer with anything after it -- yields nothing from that opener: a
+anything`` fence never runs, and a line beginning with the marker before the closer (a
+fence left open, or a closer with anything after it) yields nothing from that opener: a
 broken block never swallows the fences that follow it.
 
 A mirror clone is used because a plain ``git clone`` of a bundle makes only the default

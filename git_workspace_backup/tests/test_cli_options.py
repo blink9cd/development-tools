@@ -3,7 +3,7 @@
 
 The expected map is written out here rather than read from the CLI's own table, so a wrong
 table fails instead of agreeing with itself. Every refusal happens before the platform check,
-which is how an ACCEPTED option is told apart cheaply: on a fake Linux host it gets past the
+which is how an accepted option is told apart cheaply: on a fake Linux host it gets past the
 refusal and stops at "macOS only", with nothing run.
 """
 
@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import unittest
 from dataclasses import replace
+from unittest import mock
 
 import _cli_case as cc
 
@@ -106,6 +107,52 @@ class OptionRefusalTests(cc.CliCase):
         # would make the installed agent exit 2 every morning.
         self.assertEqual(self.main(*backup_launchd.AGENT_ARGS), 0)
         self.assertEqual([p.name for p in self.destination.iterdir()], [cc.FIRST_NAME])
+
+
+class UnsetFlagTests(cc.CliCase):
+    """The two on/off flags default to None, so --help prints no default for them.
+
+    What each mode is handed is still a bool: an unset flag must arrive as False, never as
+    the None argparse stores, because the request and install take a typed bool.
+    """
+
+    def test_the_flags_default_to_none(self) -> None:
+        args = wb.build_parser().parse_args(["--mode", "run"])
+        self.assertIsNone(args.if_due)
+        self.assertIsNone(args.dry_run)
+
+    def test_a_run_is_handed_false_for_each_unset_flag(self) -> None:
+        requests: "list[wb.RunRequest]" = []
+
+        def record(request: wb.RunRequest, deps: object) -> int:
+            requests.append(request)
+            return 0
+
+        with mock.patch.object(wb, "run_backup", record):
+            self.assertEqual(self.main("--mode", "run"), 0)
+        self.assertIs(requests[0].if_due, False)
+        self.assertIs(requests[0].dry_run, False)
+
+    def test_a_run_without_dry_run_creates_the_state_base(self) -> None:
+        # The unset flag is None, so a check written as `args.dry_run is False` would read
+        # a real run as a dry one and never create the state base.
+        base = self.tree.home / wb.STATE_BASE_NAME
+        self.assertFalse(base.exists())
+        with mock.patch.object(wb, "run_backup", lambda request, deps: 0):
+            self.assertEqual(self.main("--mode", "run"), 0)
+        self.assertTrue(base.is_dir())
+
+    def test_an_install_is_handed_false_for_an_unset_dry_run(self) -> None:
+        calls: "list[object]" = []
+
+        def record(*args: object, dry_run: object, **kwargs: object) -> int:
+            calls.append(dry_run)
+            return 0
+
+        with mock.patch.object(backup_launchd, "install", record):
+            self.assertEqual(self.main("--mode", "install"), 0)
+        self.assertEqual(len(calls), 1)
+        self.assertIs(calls[0], False)
 
 
 if __name__ == "__main__":

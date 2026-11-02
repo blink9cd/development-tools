@@ -5,7 +5,7 @@ The conventions are test_properties.py's: every ``# fuzz-target`` subject has a 
 deterministic profile is loaded before any ``@given`` is defined. Kept out of that file,
 which is near the length cap.
 
-What they are FOR: a folder counts as a snapshot -- and so can be listed, judged and pruned --
+What they are for: a folder counts as a snapshot, and so can be listed, judged and pruned,
 only when its name parses. ``strptime`` alone accepts names the tool never writes (unpadded
 fields, non-ASCII digits), so parsing must accept exactly the canonical form and never raise
 on any other text; and every name the tool writes must parse back to the moment it records.

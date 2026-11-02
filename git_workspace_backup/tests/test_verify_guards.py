@@ -3,7 +3,7 @@
 
 The restore runs bounded git against a mirror it made itself, in a directory of its own
 under the caller's scratch root, and removes that directory whatever the verdict. A name
-read from a manifest -- a bundle's, a worktree head's, a snapshot file's -- is checked before
+read from a manifest (a bundle's, a worktree head's, a snapshot file's) is checked before
 it becomes a path or a refspec, because a glob in a refspec or a ``..`` in a path would
 turn a check into a pass it never earned.
 """
@@ -245,7 +245,7 @@ class RestoreGuardTests(_Scratch):
         self.assertIsNone(self._verify(backup_proc.run_cmd, entry))
 
     def test_a_worktree_whose_name_ends_in_a_dot_verifies(self) -> None:
-        # A ref name may not END in a dot, so the name must sit mid-refname in the restore.
+        # A ref name may not end in a dot, so the name must sit mid-refname in the restore.
         self._add_detached_worktree("x.")
         entry = self._bundle(self.repo, "dot.bundle")
         self.assertIn("x.", [head.name for head in entry.worktree_heads])

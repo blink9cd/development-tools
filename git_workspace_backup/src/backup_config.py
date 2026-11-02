@@ -20,7 +20,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-# pyproject_config, the shared pyproject.toml table reader, at ONE fixed place: its folder
+# pyproject_config, the shared pyproject.toml table reader, at one fixed place: its folder
 # directly under the repository root, as backup_proc.py places bounded_run.
 sys.path.append(str(Path(__file__).resolve().parents[2] / "pyproject_config"))
 
@@ -149,7 +149,7 @@ def _destination(pyproject: Path, table: dict[str, object], home: Path) -> Path:
     """The destination, absolute and resolved, so one directory has exactly one spelling.
 
     backup_ledger keys the state directory on this path's string, so a second spelling of
-    the same directory -- through a symlink, or with a ``..`` -- would get a separate, empty
+    the same directory, through a symlink or with a ``..``, would get a separate, empty
     ledger. ``os.path.realpath`` is non-strict: it only lstats components and reads links, so
     the destination need not exist yet and no file is opened. ``Path.resolve`` is not used
     because on 3.11 and 3.12 it also stats the result and raises RuntimeError on a link loop.
@@ -176,7 +176,7 @@ def _entries(pyproject: Path, table: dict[str, object], key: str) -> tuple[str, 
     """The strings at *key*, each one a name the manifest parser would accept.
 
     Entries become zip member names, and the manifest parser refuses any member that fails
-    ``is_safe_relative_name`` -- so config applies that same predicate rather than a second
+    ``is_safe_relative_name``, so config applies that same predicate rather than a second
     rule, which could admit a name (``./a``, ``a//b``) whose snapshot would then read as
     another tool's. Glob characters are ordinary characters to the predicate.
     """

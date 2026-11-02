@@ -1,9 +1,9 @@
 """Resolve the three roots a run reads from: the primary checkout, the Claude home, home.
 
-The workspace root is the PRIMARY checkout, found by :func:`repo_root_of`
+The workspace root is the primary checkout, found by :func:`repo_root_of`
 (``--path-format=absolute --git-common-dir``), never the checkout the script happens to sit
 in: a linked worktree holds none of the gitignored extras, and a worktree cleanup can later
-delete it. That is also why installing from a linked worktree is refused -- see
+delete it. That is also why installing from a linked worktree is refused; see
 is_linked_worktree.
 
 :func:`repo_root_of` and :class:`GitError` are a copy of a shared git library's, not an
@@ -63,7 +63,7 @@ def is_linked_worktree(path: Path, *, run_git: RunGit) -> bool:
 def repo_root_of(run: RunGit, path: Path) -> Path:
     """The main working tree's root for the repository containing *path*.
 
-    Uses ``--path-format=absolute --git-common-dir``, which resolves to the SHARED admin dir
+    Uses ``--path-format=absolute --git-common-dir``, which resolves to the shared admin dir
     even when *path* is inside a linked worktree, so every worktree of one repository
     answers with the same root.
     """

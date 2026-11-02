@@ -5,9 +5,9 @@ suite reuses: the shared deterministic profile is loaded before any ``@given`` i
 and the TestCase at the bottom is what makes unittest run the property. Kept out of that
 file, which is near the length cap.
 
-What it is FOR: prune decides deletions by reading manifests, so a manifest with any one
-field missing, of the wrong kind, or joined by an unexpected key must parse as foreign --
-with two exceptions, a bundle entry's missing ``stashes`` and the manifest's missing
+What it is for: prune decides deletions by reading manifests, so a manifest with any one
+field missing, of the wrong kind, or joined by an unexpected key must parse as foreign,
+with two exceptions: a bundle entry's missing ``stashes`` and the manifest's missing
 ``machine``, which must parse (the pre-stash and pre-identity rules below). Coverage is carried by test_records.py.
 
 Why a deterministic case sits beside the property: the derandomized profile reaches any
@@ -40,7 +40,7 @@ from test_properties import (
 #: The pre-stash snapshot rule: a bundle entry written before stash entries were recorded
 #: has no ``stashes`` and reads as recording none, or every older snapshot would be kept
 #: past its retention forever (backup_manifest's module docstring). Only bundle entries
-#: carry this key, and only its DELETION is exempt: a wrong kind or an unexpected key
+#: carry this key, and only its deletion is exempt: a wrong kind or an unexpected key
 #: beside it is still foreign. Restated, not imported from the parser, so the parser's own
 #: constant cannot also be the thing that judges it.
 _KEY_A_PRE_STASH_BUNDLE_LACKS = "stashes"
@@ -84,7 +84,7 @@ def _choice_of(document: str, key: str) -> int:
 def _assert_one_malformed_field_is_foreign(document: str, choice: int) -> None:
     """The property's body, callable with a chosen field.
 
-    Each exempt deletion is asserted ACCEPTED rather than skipped, so the exemption
+    Each exempt deletion is asserted accepted rather than skipped, so the exemption
     cannot quietly cover a variant the parser refuses, or outlive the rule it names.
     """
     deleted, *refused = _variants_with_one_field_broken(document, choice)

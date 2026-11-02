@@ -1,6 +1,6 @@
 """The records workspace_backup writes and reads back: manifest, ledger and run state.
 
-Frozen dataclasses and constants only -- no I/O and no parsing. Serialization lives beside
+Frozen dataclasses and constants only: no I/O and no parsing. Serialization lives beside
 each record's reader (backup_manifest, backup_ledger), so these shapes are the one
 definition the writer and the reader agree on.
 """
@@ -25,7 +25,7 @@ OUTCOMES = frozenset(
 
 #: A snapshot folder the tool renamed into place.
 STATE_PROMOTED = "promoted"
-#: A cross-volume copy in flight; recorded BEFORE the copy so a crash leaves a known leftover.
+#: A cross-volume copy in flight; recorded before the copy so a crash leaves a known leftover.
 STATE_INCOMING = "incoming"
 LEDGER_STATES = frozenset({STATE_PROMOTED, STATE_INCOMING})
 
@@ -82,7 +82,7 @@ class BundleEntry:
 
 @dataclass(frozen=True)
 class DirtyWorktree:
-    """A worktree with uncommitted changes -- reported, never captured. -1 means unreadable."""
+    """A worktree with uncommitted changes: reported, never captured. -1 means unreadable."""
 
     path_name: str
     changed_paths: int

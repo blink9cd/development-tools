@@ -1,7 +1,7 @@
 """The ``creationflags`` every ``bounded_run`` spawn passes to ``Popen``.
 
-Private to ``bounded_run``: it lives in that folder's ``src/``, and nothing outside that
-folder imports it. Its name carries the tool's prefix, so it cannot shadow another tool's
+Private to ``bounded_run``: it sits in that tool's own ``src/`` folder, so nothing outside the
+tool folder imports it. Its name carries the tool's prefix, so it cannot shadow another tool's
 module on ``sys.path``.
 
 A pure function of the platform and the caller's choice, so every arm is pinned on any host;

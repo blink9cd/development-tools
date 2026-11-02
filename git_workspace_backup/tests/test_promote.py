@@ -167,7 +167,7 @@ class PromoteTests(unittest.TestCase):
             )
 
     def test_an_empty_target_is_refused_before_any_rename_is_attempted(self) -> None:
-        # rename(2) silently replaces an EMPTY directory, so only the check refuses it.
+        # rename(2) silently replaces an empty directory, so only the check refuses it.
         (self.destination / "2026-09-14T060000").mkdir(parents=True)
         with self.assertRaisesRegex(bp.PromoteError, "already exists"):
             bp.promote(

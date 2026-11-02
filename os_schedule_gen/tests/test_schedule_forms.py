@@ -2,7 +2,7 @@
 """The weekly instant itself, and the two forms derived from it without a unit file.
 
 Grouped with the schedule rather than with the POSIX unit content because these are
-about the MODEL -- parsing the CLI pair, deriving every notation from one instant, and
+about the model: parsing the CLI pair, deriving every notation from one instant, and
 choosing which backend a platform gets. The files those choices eventually produce are
 ``test_posix_units``.
 """
@@ -14,7 +14,7 @@ import unittest
 from datetime import date, datetime
 from pathlib import Path
 
-import schedule_artifacts as sa
+import os_schedule_gen as sa
 from _fixtures import FAKE_PATH, FAKE_PYTHON, FAKE_SCRIPT, SCHEDULE_FORMS
 
 
@@ -32,7 +32,7 @@ class ParseScheduleTests(unittest.TestCase):
         )
 
     def test_rejects_malformed_times(self) -> None:
-        # None, not an exception: register turns it into exit 2 with a message naming
+        # None, not an exception: the caller turns it into exit 2 with a message naming
         # --time, before any host call fires.
         self.assertIsNone(sa.parse_schedule("Sunday", "25:99"))
         self.assertIsNone(sa.parse_schedule("Sunday", "3pm"))
@@ -43,8 +43,8 @@ class ScheduleValidationTests(unittest.TestCase):
     """Each schedule refuses a field no backend can render, at construction.
 
     Regression: ``WeeklySchedule("Monday /><Evil", 99, 99)`` was accepted, and the Task
-    Scheduler renderer interpolates the weekday as an element NAME, which no XML escape
-    covers -- so the doc's "every text field is XML-escaped" held only for valid days.
+    Scheduler renderer interpolates the weekday as an element name, which no XML escape
+    covers, so the doc's "every text field is XML-escaped" held only for valid days.
     """
 
     def test_a_weekday_outside_days_is_refused(self) -> None:
@@ -84,24 +84,24 @@ class ScheduleValidationTests(unittest.TestCase):
 
 
 class ScheduleDerivationTests(unittest.TestCase):
-    """Every emitted schedule form derives from ONE WeeklySchedule.
+    """Every emitted schedule form derives from one WeeklySchedule.
 
     Four backends state the same weekly instant in four notations: Task Scheduler's
     ``<DaysOfWeek>``, systemd's ``OnCalendar=``, launchd's
     ``StartCalendarInterval.Weekday``, and cron's day-of-week field. Four
     hand-maintained copies of one schedule would drift apart, so this class is the gate
-    on it -- including the Windows form, which was the original and must stay a DERIVED
+    on it, including the Windows form, which was the original and must stay a derived
     form rather than a fifth independent copy.
 
     The two conventions that make an off-by-one easy: systemd's ``OnCalendar`` takes
-    an abbreviated NAME while launchd and cron take an INTEGER, and those integers put
+    an abbreviated name while launchd and cron take an integer, and those integers put
     Sunday at 0 while ISO weekdays put Monday at 1.
     """
 
     def test_every_weekday_maps_to_the_same_day_in_all_four_forms(self) -> None:
         for weekday, ref, xml_element, systemd_day, dow in SCHEDULE_FORMS:
             with self.subTest(weekday=weekday):
-                # Validate the TABLE first against datetime: a wrong reference date
+                # Validate the table first against datetime: a wrong reference date
                 # would make every assertion below agree about the wrong day.
                 self.assertEqual(sa.DAYS[ref.weekday()], weekday)
                 self.assertEqual(ref.isoweekday() % 7, dow)
@@ -131,7 +131,7 @@ class ScheduleDerivationTests(unittest.TestCase):
         self.assertEqual(latest.systemd_on_calendar, "Sat 23:59")
 
     def test_all_four_backends_schedule_the_same_action(self) -> None:
-        """The POSIX schedule runs the SAME step list as Windows, not a subset.
+        """The POSIX schedule runs the same step list as Windows, not a subset.
 
         Every backend's action is ``<python> <script> --mode run``, so the sweep's whole
         step list follows from the one mode. Asserted directly rather than trusted: a
@@ -173,7 +173,7 @@ class TaskXmlTests(unittest.TestCase):
         xml = sa.build_task_xml(
             sa.WeeklySchedule(weekday="Sunday", hour=3, minute=0),
             r"C:\py\python.exe",
-            r"C:\a b\gate_tree_sweep.py",
+            r"C:\a b\weekly_sweep.py",
             datetime(2026, 7, 21).date(),
         )
         self.assertIn("<LogonType>S4U</LogonType>", xml)
@@ -183,7 +183,7 @@ class TaskXmlTests(unittest.TestCase):
         self.assertIn("<Sunday />", xml)
         self.assertIn("<StartBoundary>2026-07-21T03:00:00</StartBoundary>", xml)
         self.assertIn("--mode run", xml)
-        self.assertIn("&quot;C:\\a b\\gate_tree_sweep.py&quot;", xml)  # quoted+escaped
+        self.assertIn("&quot;C:\\a b\\weekly_sweep.py&quot;", xml)  # quoted+escaped
         self.assertIn(r"<Command>C:\py\python.exe</Command>", xml)
 
     def test_day_element_maps(self) -> None:
@@ -198,7 +198,7 @@ class TaskXmlTests(unittest.TestCase):
 
 
 class BackendSelectionTests(unittest.TestCase):
-    """Which scheduler each platform installs into -- every branch, from one machine."""
+    """Which scheduler each platform installs into: every branch, from one machine."""
 
     def test_windows_and_macos_are_decided_by_the_platform_alone(self) -> None:
         # has_systemd is inert on these two branches; passing both answers proves it.
@@ -225,8 +225,8 @@ class BackendSelectionTests(unittest.TestCase):
         """A BSD is not Windows and not macOS, so it takes the systemd/cron branch.
 
         Falling through rather than raising is the honest answer: those boxes really do
-        run either systemd or cron, and the probe -- not a platform allowlist this file
-        would have to keep current -- is what decides.
+        run either systemd or cron, and the probe, not a platform allowlist this file
+        would have to keep current, is what decides.
         """
         self.assertEqual(
             sa.select_backend("freebsd14", has_systemd=False), sa.BACKEND_CRON_EMIT

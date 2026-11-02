@@ -1,14 +1,14 @@
 """Drain a contained child under its bound, measured on the caller's choice of clock.
 
-Private to ``bounded_run``: it lives in that folder's ``src/``, and nothing outside that
-folder imports it. Its name carries the tool's prefix, so it cannot shadow another tool's
+Private to ``bounded_run``: it sits in that tool's own ``src/`` folder, so nothing outside the
+tool folder imports it. Its name carries the tool's prefix, so it cannot shadow another tool's
 module on ``sys.path``.
 
 Why a clock is a parameter
 --------------------------
 ``Popen.communicate(timeout=...)`` measures its bound on ``time.monotonic()``. On macOS that is
 ``mach_absolute_time()``, which stops while the machine sleeps. A two-hour bound on a laptop
-that sleeps mid-run is therefore two hours of AWAKE time, and a run that sleeps is never killed.
+that sleeps mid-run is therefore two hours of awake time, and a run that sleeps is never killed.
 A caller that means wall time passes :func:`sleep_inclusive_clock`. The drain then waits in
 slices of at most :data:`SLICE_SECONDS` and re-reads that clock between them. With no clock, the
 single ``communicate`` call is exactly what it always was. A clock cannot be combined with
@@ -29,12 +29,12 @@ import time
 from collections.abc import Callable, Sequence
 from typing import TypeVar
 
-#: Seconds allowed for the pipes to drain AFTER the tree kill. Generous relative to the 0.94s
+#: Seconds allowed for the pipes to drain after the tree kill. Generous relative to the 0.94s
 #: taskkill + immediate drain measured on Windows: this is a safety net, not a tuning knob, and
-#: exceeding it means the kill did not work -- which we report rather than wait out.
+#: exceeding it means the kill did not work, which we report rather than wait out.
 KILL_GRACE_SECONDS = 5.0
 
-#: The longest single wait when a clock is given. The kill lands within one slice of AWAKE time
+#: The longest single wait when a clock is given. The kill lands within one slice of awake time
 #: after the deadline passes, because nothing runs while the machine sleeps, the kill included.
 SLICE_SECONDS = 30.0
 
@@ -52,8 +52,8 @@ _Stream = TypeVar("_Stream", str, bytes)
 #: Per ``sys.platform``, the ``clock_gettime`` clock that keeps counting while the machine
 #: sleeps. macOS's CLOCK_MONOTONIC counts sleep (``time.monotonic()`` there is CLOCK_UPTIME_RAW,
 #: which does not). Linux's CLOCK_MONOTONIC stops in suspend, and CLOCK_BOOTTIME is the one
-#: that counts it. Held as NAMES and read with getattr because typeshed declares each constant
-#: for some platforms only, and this file must type-check as win32, linux and darwin alike.
+#: that counts it. Held as names and read with getattr because typeshed declares each constant
+#: for some platforms only, and this file is type-checked as win32, linux and darwin.
 _SLEEP_INCLUSIVE_CLOCKS = {"darwin": "CLOCK_MONOTONIC", "linux": "CLOCK_BOOTTIME"}
 
 #: The attribute the drain's interrupt path sets on the interrupt it has already acted on, so
@@ -87,9 +87,9 @@ def refuse_clock_with_stdin(
 
     The sliced wait retries ``communicate``, and a retry may not pass the input again. On CPython
     3.12 and earlier (the 3.9, 3.10 and 3.12 sources) the POSIX drain arms the stdin pipe only
-    for a truthy input ARGUMENT, so a retry never writes what the first slice could not; 3.14
-    resumes from the input it kept. Input larger than the pipe buffer would stall the child until the
-    deadline, and the kill would read as a spurious timeout. Empty input is only an EOF.
+    for a truthy ``input`` argument, so a retry never writes what the first slice could not; 3.14
+    resumes from the input it kept. Input larger than the pipe buffer would stall the child until
+    the deadline, and the kill would read as a spurious timeout. Empty input is only an EOF.
     """
     if clock is not None and stdin_data:
         raise ValueError("clock= cannot be combined with stdin input")
@@ -116,10 +116,10 @@ def _communicate_bounded(
     stdin_data: _Stream | None = None,
     clock: Clock | None = None,
 ) -> tuple[_Stream, _Stream]:
-    """Drain *proc* under *timeout*; on expiry kill its tree BEFORE re-reading the streams.
+    """Drain *proc* under *timeout*; on expiry kill its tree before re-reading the streams.
 
     Raises ``subprocess.TimeoutExpired`` on expiry, carrying whatever output the post-kill read
-    recovered -- the same shape ``subprocess.run`` raises, so existing handlers are unaffected.
+    recovered: the same shape ``subprocess.run`` raises, so existing handlers are unaffected.
     If that read also expires the tree kill did not work; the partial output is abandoned and the
     exception raised without it, because a bound that always returns beats one that sometimes
     hangs.

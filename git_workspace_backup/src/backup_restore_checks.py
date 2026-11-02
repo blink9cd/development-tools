@@ -15,16 +15,16 @@ tab, which git can write into one and which hides nothing.
 Where a block may write. Keeping each path lexically beneath its root is not enough, and
 neither is an empty RESTORE_ROOT at the start: the blocks run in order and fill it, and a
 restored checkout may hold symlinks, so a block whose target lay inside an earlier block's
-target could be carried through one out of RESTORE_ROOT -- a ``workspace.bundle`` committing
+target could be carried through one out of RESTORE_ROOT: a ``workspace.bundle`` committing
 ``evil -> ../..``, then a ``workspace/evil.bundle``. So a rendered document holds to three
 rules, each refused when broken:
 
 - a bundle's name ends in ``.bundle``, and both the name, joined onto SNAPSHOT, and its
   restore directory (:func:`restore_dir`), joined onto RESTORE_ROOT, are safe relative names
-  -- no empty, ``.`` or ``..`` component, no leading slash, no NUL -- so neither join leaves
+  (no empty, ``.`` or ``..`` component, no leading slash, no NUL), so neither join leaves
   its root lexically;
-- every name is one the build writes -- ``workspace.bundle``, or ``memory/<slug>.bundle``
-  whose slug is one safe path component -- and none appears twice;
+- every name is one the build writes (``workspace.bundle``, or ``memory/<slug>.bundle``
+  whose slug is one safe path component), and none appears twice;
 - no two write targets, each bundle's restore directory and the fixed ``extras`` directory
   the files block unzips into, are equal or nested by path component, so no target lies
   inside another block's target, where that block's checkout could have left a symlink.

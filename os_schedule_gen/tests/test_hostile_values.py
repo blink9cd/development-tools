@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Hostile paths through the systemd and cron builders: the output must MEAN the input.
+"""Hostile paths through the systemd and cron builders: the output must mean the input.
 
 A text assertion shows that an escape was written; it cannot show the scheduler reads it
 back as the same value. So each case here decodes the output the way its consumer does and
@@ -8,7 +8,7 @@ compares the decoded value with the input:
 * the systemd units are read as INI (no key may appear that the builder did not write),
   after joining each line that ends in an unescaped backslash to the next, as systemd's
   parser does (``systemd.syntax(7)``), so a value that swallows the key below it is seen;
-  then each field is decoded by a model of systemd's rules for that field -- specifiers
+  then each field is decoded by a model of systemd's rules for that field: specifiers
   first, then C-style unquoting where the field takes it, then ``$`` substitution in
   ``ExecStart=`` alone (``systemd.service(5)``, ``systemd.exec(5)``);
 * the cron line's command has crontab(5)'s ``%`` rule applied by a model of cron's own
@@ -29,7 +29,7 @@ import subprocess
 import tempfile
 import unittest
 
-import schedule_artifacts as sa
+import os_schedule_gen as sa
 from _fixtures import FAKE_PATH, FAKE_PYTHON, FAKE_SCRIPT
 
 _SCHEDULE = sa.WeeklySchedule(weekday="Friday", hour=6, minute=30)

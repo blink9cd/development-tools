@@ -21,7 +21,7 @@ import _fixtures as fx
 
 import backup_launchd
 import backup_run
-import schedule_artifacts
+import os_schedule_gen
 import git_workspace_backup as wb
 from backup_fs import RunLock
 
@@ -106,7 +106,7 @@ class AgentCliTests(cc.CliCase):
             plist["EnvironmentVariables"]["PATH"],
             backup_launchd.baked_path(cc.FIXTURE_GIT),
         )
-        logs = schedule_artifacts.logs_dir(self.tree.home / wb.STATE_BASE_NAME)
+        logs = os_schedule_gen.logs_dir(self.tree.home / wb.STATE_BASE_NAME)
         self.assertTrue(logs.is_dir())
         domain = f"gui/{cc.FIXTURE_UID}"
         self.assertIn(
@@ -121,7 +121,7 @@ class AgentCliTests(cc.CliCase):
         self.launchctl.prints = [backup_launchd.PRINT_ABSENT_RC, 0]
         self.assertEqual(self.main("--mode", "install"), 0)
         plist = plistlib.loads(backup_launchd.plist_path(self.tree.home).read_bytes())
-        default = schedule_artifacts.parse_daily_time(backup_launchd.DEFAULT_TIME)
+        default = os_schedule_gen.parse_daily_time(backup_launchd.DEFAULT_TIME)
         assert default is not None
         interval = {"Hour": default.hour, "Minute": default.minute}
         self.assertEqual(plist["StartCalendarInterval"], interval)
@@ -238,6 +238,32 @@ class AgentCliTests(cc.CliCase):
                 self.assertIn(str(lock), warning)
                 # The probe created nothing: no directory, no lock file.
                 self.assertEqual(_entries(base), before)
+
+    def test_a_lock_symlinked_to_another_file_is_never_probed_through(self) -> None:
+        # A self-loop fails with ELOOP whether or not the probe follows links, so it cannot
+        # show O_NOFOLLOW at work. A link to a separate file can: followed, a missing target
+        # reads as a free lock and an existing one is opened and flocked, and install goes on.
+        base = self.tree.home / wb.STATE_BASE_NAME
+        lock = base / backup_run.LOCK_NAME
+        elsewhere = self.tmp / "fixture-elsewhere"
+        elsewhere.mkdir()
+        self.addCleanup(_clear_state_base, base)
+        for present in (False, True):
+            with self.subTest(target_present=present):
+                target = elsewhere / f"planted-{present}.lock"
+                if present:
+                    fx.plant_untouched_file(target)
+                _clear_state_base(base)
+                base.mkdir()
+                lock.symlink_to(target)
+                before = fx.file_fingerprint(target)
+                self.launchctl = cc.FakeLaunchctl()
+                self.assertEqual(self.main("--mode", "install"), 2)
+                self.assert_one_error_line(
+                    "could not check whether a backup run is in progress"
+                )
+                self.assertEqual(self.launchctl.argvs, [])
+                self.assertEqual(fx.file_fingerprint(target), before)
 
     def test_uninstall_needs_neither_a_checkout_nor_a_configuration(self) -> None:
         plist = self.write_plist()

@@ -31,7 +31,7 @@ class _FakeProc:
         self.pid = 4242
         self.returncode = returncode
         # Ordered record of every read. The ordering test injects a kill seam that appends to
-        # this SAME list, so the sequence is observable -- counting the two events separately
+        # this same list, so the sequence is observable; counting the two events separately
         # cannot distinguish kill-then-reread from reread-then-kill.
         self.call_log: list[str] = []
 
@@ -65,7 +65,7 @@ class CommunicateBoundedTests(unittest.TestCase):
         killed: list[int] = []
 
         def record_kill(pid: int) -> None:
-            """Record the kill into the fake's own read log, so ORDER is what gets asserted."""
+            """Record the kill into the fake's own read log, so order is what gets asserted."""
             killed.append(pid)
             proc.call_log.append("kill")
 
@@ -80,8 +80,8 @@ class CommunicateBoundedTests(unittest.TestCase):
         self.assertEqual(
             proc.call_log,
             ["communicate", "kill", "communicate"],
-            "the tree kill must land BETWEEN the expiring read and the re-read -- an "
-            "implementation that re-read first and killed afterwards satisfies every "
+            "the tree kill must land between the expiring read and the re-read: an "
+            "implementation that re-read first and killed afterward satisfies every "
             "other assertion here, and is the hang this module exists to remove",
         )
         self.assertEqual(caught.exception.output, "out")
@@ -117,8 +117,8 @@ class RunBoundedTests(unittest.TestCase):
         self.assertEqual(done.stdout, b"payload")
 
     def test_bytes_variant_opens_no_stdin_pipe_when_given_none(self) -> None:
-        # Covers the FALSE arm of run_bounded_bytes' `stdin=PIPE if ... else None`. Without this
-        # the branch gate misses it: every other bytes-path test passes stdin_bytes.
+        # Covers the false arm of run_bounded_bytes' `stdin=PIPE if ... else None`. Without
+        # this, branch coverage misses it: every other bytes-path test passes stdin_bytes.
         done = bounded_run.run_bounded_bytes(
             [sys.executable, "-c", "print('no stdin')"], timeout=30.0
         )
@@ -127,8 +127,8 @@ class RunBoundedTests(unittest.TestCase):
 
     def test_feeds_text_stdin_and_decodes_the_echo(self) -> None:
         # A hook driven as `bash <script>` reading its transaction from stdin is a real shape,
-        # and it is TEXT -- forcing such a caller through the bytes variant would
-        # make it hand-roll encode/decode, which is the duplication this seam exists to avoid.
+        # and its input is text: forcing such a caller through the bytes variant would make it
+        # hand-roll encode/decode, which is the duplication this seam exists to avoid.
         done = bounded_run.run_bounded(
             [sys.executable, "-c", "import sys; sys.stdout.write(sys.stdin.read())"],
             timeout=30.0,
@@ -138,9 +138,9 @@ class RunBoundedTests(unittest.TestCase):
         self.assertEqual(done.stdout, "a b c\n")
 
     def test_opens_no_stdin_pipe_when_text_stdin_is_none(self) -> None:
-        # The FALSE arm of run_bounded's own `stdin=PIPE if ... else DEVNULL`: a child given no
+        # The false arm of run_bounded's own `stdin=PIPE if ... else DEVNULL`: a child given no
         # stdin must not get a pipe nobody writes to, which would leave it blocking on a read
-        # that never completes. DEVNULL is what avoids that -- see the leak test below for why
+        # that never completes. DEVNULL is what avoids that; see the leak test below for why
         # inheriting is not the alternative it once looked like.
         done = bounded_run.run_bounded(
             [sys.executable, "-c", "print('no stdin')"], timeout=30.0
@@ -149,10 +149,10 @@ class RunBoundedTests(unittest.TestCase):
         self.assertIn("no stdin", done.stdout)
 
     def test_does_not_leak_the_callers_stdin_to_the_child(self) -> None:
-        # The EL9 failure this guards: `dnf` READS whatever stdin it inherits. A probe launched
-        # from a script delivered ON stdin (`ssh host "bash -s" < script`, `curl ... | bash`)
-        # therefore swallowed the REST OF THAT SCRIPT, and the shell exited 0 -- a silent
-        # truncation with no error anywhere. A capturing run pipes stdout AND stderr, so the
+        # The EL9 failure this guards: `dnf` reads whatever stdin it inherits. A probe launched
+        # from a script delivered on stdin (`ssh host "bash -s" < script`, `curl ... | bash`)
+        # therefore swallowed the rest of that script, and the shell exited 0: a silent
+        # truncation with no error anywhere. A capturing run pipes both stdout and stderr, so the
         # child cannot be interactive regardless; DEVNULL hands it an immediate EOF, which is
         # neither inheritance nor a pipe nobody writes to.
         read_fd, write_fd = os.pipe()
@@ -181,7 +181,7 @@ class RunBoundedTests(unittest.TestCase):
 #: machine does not expire it spuriously before the child is even up.
 _LIVE_TIMEOUT = 3.0
 
-#: Ceiling asserted against. The measured fixed path took 3.97s for a 3.0s bound; the UNFIXED
+#: Ceiling asserted against. The measured fixed path took 3.97s for a 3.0s bound; the unfixed
 #: path did not return within 300s. Anything under this proves the tree kill worked.
 _LIVE_CEILING = 30.0
 
@@ -229,10 +229,10 @@ class LiveGrandchildBoundaryTests(unittest.TestCase):
 class GrandchildFixtureArgvTests(unittest.TestCase):
     """The fixture must ignore an argv it did not choose.
 
-    Tools under test launch it AS their own subprocess and append flags of their own, so its
+    A tool under test may launch it as its own subprocess and append flags of its own, so its
     command line reads ``gc_child.py --path <dir>``. While its pid files were positional it took
     those flags for them: it wrote its pid into a file named ``--path`` beside the caller, then
-    crashed writing to ``<dir>`` -- so the wedged direct child those tests model had already
+    crashed writing to ``<dir>``, so the wedged direct child those tests model had already
     exited, and every one of their assertions still passed.
     """
 
@@ -250,7 +250,7 @@ class GrandchildFixtureArgvTests(unittest.TestCase):
         self.assertEqual(stray, [], "the fixture wrote a file beside its caller")
         self.assertFalse(
             caught.exception.stderr,
-            "the fixture wrote to stderr -- a traceback means it crashed before the bound",
+            "the fixture wrote to stderr; a traceback means it crashed before the bound",
         )
 
 
@@ -332,15 +332,15 @@ class ArgvTypeTests(unittest.TestCase):
 _GRANDCHILD_LIFETIME = 20.0
 
 #: The exited-leader bound. The child exits as soon as the grandchild is started, but its
-#: interpreter start, imports and Popen must all come first -- a kill that lands earlier leaves
-#: no grandchild to test -- so the bound leaves a loaded machine room for them.
+#: interpreter start, imports and Popen must all come first (a kill that lands earlier leaves
+#: no grandchild to test), so the bound leaves a loaded machine room for them.
 _EXITED_LEADER_TIMEOUT = 3.0
 
 #: Above the bound plus the kill plus the post-kill drain, below the grandchild's lifetime.
 _EXITED_LEADER_CEILING = 10.0
 
 #: The child starts a grandchild that inherits its stdout/stderr, writes the grandchild's pid
-#: to the file named by argv[1] -- Popen knows it at once -- and exits.
+#: to the file named by argv[1] (Popen knows it at once), and exits.
 _EXITING_LEADER = (
     "import pathlib, subprocess, sys; "
     "grandchild = subprocess.Popen("
@@ -393,7 +393,7 @@ class LiveUnregisteredTreeTests(unittest.TestCase):
     def test_kills_a_live_tree_it_did_not_start(self) -> None:
         with live_pid_guard.record_fixture_pids() as pids:
             # A new session makes the child a group leader, which the POSIX fallback requires;
-            # the Windows fallback, taskkill /T, needs the child alive instead -- as it is here.
+            # the Windows fallback, taskkill /T, needs the child alive instead, as it is here.
             child = subprocess.Popen(
                 [sys.executable, str(_GRANDCHILD_FIXTURE)],
                 stdout=subprocess.DEVNULL,
@@ -401,7 +401,7 @@ class LiveUnregisteredTreeTests(unittest.TestCase):
                 start_new_session=True,
             )
             try:
-                # The grandchild must exist before the kill, or nothing about a TREE is tested.
+                # The grandchild must exist before the kill, or nothing about a tree is tested.
                 _await_recorded_pid(pids.grandchild)
                 bounded_run.kill_tree(child.pid)
                 child.wait(timeout=live_pid_guard.REAP_DEADLINE_SECONDS)
@@ -410,14 +410,14 @@ class LiveUnregisteredTreeTests(unittest.TestCase):
                     pids.grandchild_gone, "the fallback left the grandchild running"
                 )
             finally:
-                # Reaped through its own handle -- Popen never signals a child it has already
-                # reaped -- so the guard's cleanup must not signal that pid a second time.
+                # Reaped through its own handle (Popen never signals a child it has already
+                # reaped), so the guard's cleanup must not signal that pid a second time.
                 child.kill()
                 child.wait(timeout=live_pid_guard.REAP_DEADLINE_SECONDS)
                 pids.child_gone = True
 
 
-#: The grouped suites in tests/. They run through
+#: The grouped suites, split out to keep this file to a reviewable length. They run through
 #: load_tests below, so the coverage run of this file covers them.
 _TESTS = Path(__file__).resolve().parent / "tests"
 
@@ -432,7 +432,7 @@ _MIN_GROUPED_TESTS_BY_FILE = {
     "test_kernel_job_api.py": 13,
     "test_live_registry.py": 11,
     "test_nested_tree_kill.py": 1,
-    "test_posix_tree.py": 28,
+    "test_posix_tree.py": 29,
     "test_spawn_flags.py": 8,
     "test_spawn_window.py": 10,
 }

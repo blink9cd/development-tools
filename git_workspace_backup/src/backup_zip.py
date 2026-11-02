@@ -1,7 +1,7 @@
 """Write the whitelisted files into extras.zip under workspace/, claude/ and home/ prefixes.
 
 Include-only: nothing enters the archive unless a
-configured entry names it. Every entry must match at least one regular file -- an entry
+configured entry names it. Every entry must match at least one regular file: an entry
 that silently matches nothing is how a backup quietly stops covering something.
 
 An entry means what it means to drift detection. Its root is walked, and a regular file is
@@ -13,13 +13,13 @@ drift calls covered, less those recorded as skipped or failed. A directory the w
 list is a failed item and the walk goes on: nothing beneath it vanishes unrecorded.
 
 Nothing beneath a root is followed; the root itself is configuration, and may be a link. A
-symlink the pattern reaches -- one it matches, or a directory link on the way to a match --
+symlink the pattern reaches (one it matches, or a directory link on the way to a match)
 is recorded and skipped, and a special file (a FIFO, a socket) is skipped. A member is read
 through ``backup_fs.read_regular_file``: relative to a descriptor on its root, opened with
 ``O_NOFOLLOW_ANY`` so that no component beneath the root may be a symlink, opened without
-waiting on a FIFO, and refused unless its fstat says regular file -- and bounded here by a
-watchdog. So a path swapped after the walk -- its last component or any directory above it,
-up to the root -- can neither leave the root nor hang the run. The member's time and mode
+waiting on a FIFO, and refused unless its fstat says regular file; here a watchdog bounds
+it. So a path swapped after the walk (its last component or any directory above it, up to
+the root) can neither leave the root nor hang the run. The member's time and mode
 come from that same fstat.
 
 The gap that remains: ``O_NOFOLLOW_ANY`` is macOS's, and an interpreter that does not
@@ -50,8 +50,8 @@ from backup_json import is_safe_relative_name
 from backup_model import FailedItem, FileEntry
 
 #: Bound on reading one member. Whitelisted files are small config that reads in
-#: milliseconds; the bound is for the one that is not local -- an iCloud-offloaded file
-#: downloads on first read -- so a stuck read costs one failed item instead of holding the
+#: milliseconds; the bound is for the one that is not local (an iCloud-offloaded file
+#: downloads on first read), so a stuck read costs one failed item instead of holding the
 #: run lock into launchd's next firing.
 MEMBER_READ_TIMEOUT_S = 60.0
 #: The failure reason for a member read that failed or outlived its bound: the bounded

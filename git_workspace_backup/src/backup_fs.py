@@ -4,7 +4,7 @@ The temp-then-replace itself is the shared ``atomic_write`` library's; the two
 writers here only add this tool's parent-directory creation and its mode.
 
 The regular-file reader lives here, beside the other primitives, because two feature modules
-use it -- an archive member and a promoted manifest are each read beneath a root -- and
+use it (an archive member and a promoted manifest are each read beneath a root), and
 neither should import the other to reach it.
 """
 
@@ -19,7 +19,7 @@ import threading
 from collections.abc import Callable
 from pathlib import Path
 
-# atomic_write, the shared atomic file replacement, at ONE fixed place: its folder directly
+# atomic_write, the shared atomic file replacement, at one fixed place: its folder directly
 # under the repository root, as backup_proc.py places bounded_run.
 sys.path.append(str(Path(__file__).resolve().parents[2] / "atomic_write"))
 
@@ -130,7 +130,7 @@ def read_bytes_bounded(
     """Read *path* on a watchdog thread; None when the read fails or outlives *timeout*.
 
     iCloud materializes an offloaded file on first read, which can block on the network
-    with no timeout parameter to pass -- so the wait is bounded here instead. An abandoned
+    with no timeout parameter to pass, so the wait is bounded here instead. An abandoned
     read keeps its daemon thread until the read returns; the caller has already moved on.
     """
     result: list[bytes] = []
@@ -152,7 +152,7 @@ class RunLock:
     """An exclusive, non-blocking ``flock`` held for the life of one run.
 
     ``flock`` locks belong to the open file description, so a second ``RunLock`` on the same
-    path -- in this process or another -- is refused until the first releases.
+    path, in this process or another, is refused until the first releases.
     """
 
     def __init__(self, path: Path) -> None:
@@ -198,7 +198,7 @@ def lock_is_held(path: Path) -> bool:
 
     Nothing is created: every holder creates the lock file, so an absent one is free. The
     lock is taken without blocking and let go at once, and the descriptor is closed whatever
-    happens. An existing file that cannot be opened -- no permission to read it -- raises
+    happens. An existing file that cannot be opened (no permission to read it) raises
     OSError, since whether it is held is then unknown.
     """
     try:
@@ -228,7 +228,7 @@ if sys.platform == "win32":
 
 else:  # pragma: only-on posix
     #: O_NOFOLLOW_ANY refuses a symlink in any component of the path it is given, not only
-    #: the last. The walk lists a directory and the read opens its files afterwards, so a
+    #: the last. The walk lists a directory and the read opens its files afterward, so a
     #: middle directory swapped for a symlink in that window would otherwise be followed
     #: out of the root. Read by getattr: typeshed declares it for darwin alone, and an
     #: interpreter without it falls back to guarding only the last component.
@@ -242,7 +242,7 @@ else:  # pragma: only-on posix
         """A descriptor reading *rel* under *root*, and its fstat; OSError unless regular.
 
         *rel* is opened relative to a descriptor on *root*, because O_NOFOLLOW_ANY given an
-        absolute path refuses a symlink above the root as well -- ``/var`` on macOS, or a
+        absolute path refuses a symlink above the root as well: ``/var`` on macOS, or a
         symlinked root. Non-blocking only until the type is known; the flag is then
         cleared, so the read is an ordinary blocking one and the caller's watchdog bounds it.
 

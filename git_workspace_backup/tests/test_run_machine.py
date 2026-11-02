@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A run names and records its snapshot by this machine's identity, which never travels.
 
-The identity's own rules -- the label a host name gives, the kept file -- are pinned in
+The identity's own rules (the label a host name gives, the kept file) are pinned in
 test_machine.py. These are what a run does with it, end to end against real git and a temp
 destination, with the host name injected as an obvious fixture.
 """

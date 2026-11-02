@@ -1,13 +1,13 @@
 """The kernel32 layouts and signatures ``bounded_run``'s Windows job containment marshals.
 
-Private to ``bounded_run``: it lives in that folder's ``src/``, and nothing outside that
-folder imports it. Its name carries the tool's prefix, so it cannot shadow another tool's
+Private to ``bounded_run``: it sits in that tool's own ``src/`` folder, so nothing outside the
+tool folder imports it. Its name carries the tool's prefix, so it cannot shadow another tool's
 module on ``sys.path``.
 
 Why these sit apart
 -------------------
-``bounded_run.py`` sat at the file-length bar. These are transcriptions of the Win32 headers --
-structure layouts and the function table -- with no behavior of their own; the job API that
+They keep ``bounded_run.py`` to a reviewable length. These are transcriptions of the Win32
+headers (structure layouts and the function table) with no behavior of their own; the job API that
 calls through them, and the containment that drives it, stay in ``bounded_run.py`` beside the
 spawn they are part of. ``bounded_run`` re-exports each name, so its tests read them where they
 always have.

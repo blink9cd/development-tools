@@ -1,6 +1,6 @@
 """Containment wiring: each child joins its job before it runs, and the job is what gets killed.
 
-These run on every host against a fake job API, so they pin the ORDER and the failure handling
+These run on every host against a fake job API, so they pin the order and the failure handling
 around the Windows calls. The calls themselves are pinned by test_kernel_job_api.py.
 """
 

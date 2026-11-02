@@ -3,27 +3,28 @@
 Why this exists
 ---------------
 ``subprocess.run(..., capture_output=True, timeout=N)`` looks like a bound on the whole call.
-It is not. On ``TimeoutExpired`` CPython kills only the DIRECT child, then goes back to reading
-the captured pipes to assemble the exception's ``output`` -- and any surviving *grandchild* that
-inherited those handles keeps them open, so that read blocks indefinitely. The bound is reliable
-for a leaf child and unreliable for exactly the nested case the bound exists to catch, which is
-the shape every orchestrator that runs other tools has.
+It is not. On ``TimeoutExpired`` CPython on Windows kills only the direct child, then goes back
+to reading the captured pipes to assemble the exception's ``output``, and any surviving
+*grandchild* that inherited those handles keeps them open, so that read blocks indefinitely. On
+POSIX the same call returns near the bound but leaves the grandchild running. The bound is
+reliable for a leaf child and unreliable for exactly the nested case the bound exists to catch,
+which is the shape an orchestrator has.
 
-This module inverts the order: on expiry it kills the whole process TREE first, and only then
+This module inverts the order: on expiry it kills the whole process tree first, and only then
 touches the streams. Measured on Windows: the unfixed path did not return within 5 minutes
 against a 3.0s bound; this path, then killing through ``taskkill /T``, returned in 3.97s.
 
 On Windows the tree is a job object the child joins while still suspended. A nested run's job
 nests inside it, so the kill reaches every descendant whether or not the child is alive. On
 POSIX the child leads a process group, but a descendant that itself runs ``run_bounded`` leads a
-NEW session, beyond that group's reach, so the kill freezes every group reachable from the
+new session, beyond that group's reach, so the kill freezes every group reachable from the
 child's through the process table, then kills them all (``src/boundedrun_posix_tree.py``). Only
 a descendant whose own parent exited before the kill, and which left that parent's group, is
 out of the POSIX walk's reach. ``bounded_run.md`` records why, and what has been run where.
 
 Entry point assumptions
 -----------------------
-``run_bounded`` is a drop-in for a capturing ``subprocess.run`` -- it bakes in ``capture_output``,
+``run_bounded`` is a drop-in for a capturing ``subprocess.run``: it bakes in ``capture_output``,
 ``encoding``/``errors`` (the policy ``stdio_utf8`` defines) and ``check=False``, returns a
 ``CompletedProcess``, and raises ``subprocess.TimeoutExpired`` carrying partial output. Every
 existing ``except subprocess.TimeoutExpired`` handler therefore keeps working unchanged.
@@ -42,14 +43,14 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Protocol
 
-# stdio_utf8 is the shared stream-policy library, resolved from this file's own location rather
-# than from the working directory, so moving the project needs no edit here.
+# stdio_utf8 is the shared stream-policy library, resolved from this file's own location so the
+# module does not depend on where the tree lives or on the working directory.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "stdio_utf8"))
 
 import stdio_utf8  # noqa: E402 - import follows the sys.path bootstrap above
 
-# The wait itself -- how long to block on the child, on which clock, and the kill-then-reread
-# order when it expires -- lives in this tool's private src/, apart from the spawning and the
+# The wait itself (how long to block on the child, on which clock, and the kill-then-reread
+# order when it expires) lives in this tool's private src/, apart from the spawning and the
 # Windows job containment this file owns.
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
@@ -92,7 +93,7 @@ _ERROR_NO_MORE_FILES = 18
 _ASSIGN_RIGHTS = 0x0100 | 0x0001
 
 #: Failure values: ResumeThread's (DWORD)-1, and INVALID_HANDLE_VALUE as a c_void_p restype
-#: returns it -- every bit of a pointer set.
+#: returns it, with every bit of a pointer set.
 _RESUME_THREAD_FAILED = 0xFFFFFFFF
 _INVALID_HANDLE_VALUE = 2 ** (8 * ctypes.sizeof(ctypes.c_void_p)) - 1
 
@@ -145,7 +146,7 @@ class _KernelJobApi:
         info_class = _JOB_OBJECT_EXTENDED_LIMIT_INFORMATION
         ref, size = ctypes.byref(limits), ctypes.sizeof(limits)
         if not self._k32.SetInformationJobObject(job, info_class, ref, size):
-            # Read the cause BEFORE closing: the close is a kernel32 call too, and would replace it.
+            # Read the cause before closing: the close is a kernel32 call too, and would replace it.
             error = self._last_error()
             self.close(job)
             raise error
@@ -187,7 +188,8 @@ class _KernelJobApi:
                 if entry.th32OwnerProcessID == pid:
                     thread_ids.append(entry.th32ThreadID)
                 more = self._k32.Thread32Next(snapshot, ctypes.byref(entry))
-            # FALSE ends a walk at its end and on a failure alike; only the last error tells.
+            # A false return ends a walk at its end and on a failure alike; only the last error
+            # tells.
             error = self._last_error()
             if getattr(error, "winerror", None) != _ERROR_NO_MORE_FILES:
                 raise error
@@ -241,7 +243,7 @@ _JOBS: dict[int, tuple[_JobApi, int]] = {}
 
 
 def kill_tree(pid: int) -> None:
-    """Kill process *pid* AND every descendant it spawned.
+    """Kill process *pid* and every descendant it spawned.
 
     A child this module started, while its run lasts, is killed through its job, which reaches
     every descendant whether or not *pid* is still alive. Any other pid gets the platform's tree
@@ -265,9 +267,9 @@ def kill_tree(pid: int) -> None:
         return
     if sys.platform == "win32":
         # taskkill /T walks the descendant tree by parent PID; /F is unconditional. A bounded
-        # capturing subprocess.run is safe HERE and only here: taskkill spawns nothing, so no
-        # grandchild can hold its pipes -- the precondition the general case violates and this
-        # whole module exists to handle.
+        # capturing subprocess.run is safe here and only here: taskkill spawns nothing, so no
+        # grandchild can hold its pipes, which is the precondition the general case violates
+        # and this whole module exists to handle.
         subprocess.run(  # reliability: ignore[RL005] leaf; pragma: only-on win32
             ["taskkill", "/F", "/T", "/PID", str(pid)],
             capture_output=True,
@@ -276,9 +278,9 @@ def kill_tree(pid: int) -> None:
         )
     else:  # pragma: only-on posix
         # run_bounded and run_bounded_bytes start the child with start_new_session=True, so
-        # its process-group id IS its pid and the group needs no lookup. os.getpgid must not
+        # its process-group id is its pid and the group needs no lookup. os.getpgid must not
         # be used: macOS refuses it (ESRCH) for a leader that has exited but is not yet
-        # reaped, which is exactly when a grandchild can still hold the pipes -- the lookup
+        # reaped, which is exactly when a grandchild can still hold the pipes. The lookup
         # raised, killed nothing, and the timeout surfaced as an OSError instead. A member the
         # kill cannot signal cannot hang the caller either: a survivor still holding the pipes
         # makes the bounded re-read expire, which raises without output.
@@ -370,14 +372,14 @@ def run_bounded(
     """Run *argv*, capturing text output, bounded by *timeout* with a real tree kill.
 
     *stdin_text* feeds the child on stdin; a pipe is opened only when it is given, and a caller
-    that passes nothing gets ``DEVNULL`` -- an immediate EOF. Deliberately NOT inheritance: this
-    run captures stdout AND stderr, so the child cannot be interactive anyway, and a child that
-    READS stdin then eats the caller's own. `dnf` does exactly that, so a probe launched from a
-    script delivered on stdin (``bash -s``, ``curl | bash``) silently swallowed the rest of that
-    script and the shell exited 0. DEVNULL is also not the hazard inheritance was chosen to
-    avoid -- a pipe nobody writes to would block; an EOF does not. Text rather than bytes because
-    the callers that need it drive a shell hook whose transaction is text -- see
-    :func:`run_bounded_bytes` for the binary case. A ``str`` or ``bytes`` *argv* is a TypeError.
+    that passes nothing gets ``DEVNULL``, an immediate EOF. Deliberately not inheritance: this
+    run captures both stdout and stderr, so the child cannot be interactive anyway, and a child
+    that reads stdin then eats the caller's own. `dnf` does exactly that, so a probe launched
+    from a script delivered on stdin (``bash -s``, ``curl | bash``) silently swallowed the rest
+    of that script and the shell exited 0. DEVNULL is also not the hazard inheritance was chosen
+    to avoid: a pipe nobody writes to would block; an EOF does not. Text rather than bytes, for
+    a caller whose input is text; see :func:`run_bounded_bytes` for the binary case. A ``str``
+    or ``bytes`` *argv* is a TypeError.
 
     *clock*, when given, measures *timeout* on it instead of ``time.monotonic()``, which stops
     while a Mac sleeps: pass :func:`sleep_inclusive_clock` for a bound in wall time. The kill
@@ -388,7 +390,7 @@ def run_bounded(
     A console-subsystem child of a parent with no console (``pythonw.exe``) is otherwise given a
     new, visible one.
 
-    Deliberately NOT used as a context manager: ``Popen.__exit__`` calls an unbounded ``wait()``,
+    Deliberately not used as a context manager: ``Popen.__exit__`` calls an unbounded ``wait()``,
     which would reintroduce the very hang this module removes on the failed-kill path.
     """
     refuse_bad_call(argv, clock, stdin_text)
@@ -421,7 +423,7 @@ def run_bounded_bytes(
 ) -> subprocess.CompletedProcess[bytes]:
     """Binary-mode sibling of :func:`run_bounded`, for a caller that feeds and reads raw bytes.
 
-    Git run in binary mode with piped stdin is one such caller. Kept a
+    Exists for a caller that runs a program such as git in binary mode with piped stdin. Kept a
     separate named function rather than a ``text: bool`` switch so each has one reason to exist
     and mypy needs no ``@overload``. Its no-stdin arm is ``DEVNULL``, and *clock* means
     what it does there, and so does *hide_window*, for the same reasons as :func:`run_bounded`'s.

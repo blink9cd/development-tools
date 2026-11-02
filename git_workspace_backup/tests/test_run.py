@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """One run end to end, against real git and a temp destination: the pipeline's exit paths.
 
-The guards the pipeline holds -- a manifest that must read back before it is ledgered, fresh
+The guards the pipeline holds (a manifest that must read back before it is ledgered, fresh
 staging, a document that refuses to render, verification scratch, a record that cannot be
-written -- are pinned in test_run_guards.py.
+written) are pinned in test_run_guards.py.
 """
 
 from __future__ import annotations

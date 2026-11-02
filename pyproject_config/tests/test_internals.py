@@ -2,7 +2,7 @@
 """The private layers ``read_tool_table`` and ``read_path_lists`` are built from.
 
 These are tested directly rather than only through the public entry points because
-each one owns a distinct decision that fails SILENTLY when wrong: the real seams pin
+each one owns a distinct decision that fails silently when wrong: the real seams pin
 the UTF-8 decode, the validator pins that a wrong-shaped value stops the gate, and
 the table/list extractors pin that every wrong shape on the way down degrades to
 empty rather than raising. Reaching them through the walk alone would leave several
@@ -47,7 +47,7 @@ class DefaultSeamsTest(unittest.TestCase):
             self.assertFalse(pc.default_is_dir(target))
 
     def test_read_text_decodes_as_utf8(self) -> None:
-        """Explicitly UTF-8, not the locale code page -- a pyproject may hold any text."""
+        """Explicitly UTF-8, not the locale code page: a pyproject may hold any text."""
         with TemporaryDirectory() as tmp:
             target = Path(tmp) / "pyproject.toml"
             target.write_bytes('name = "café"\n'.encode())

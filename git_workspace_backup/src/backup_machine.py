@@ -7,9 +7,9 @@ orphan the ledger keyed on the destination and leave the snapshots already there
 label derived on every run, which a host-name change would turn into another machine's; and a
 random id, which status and RESTORE.md could show only as an unreadable string.
 
-The label is derived once and then kept. The first run derives it from the host name -- the
+The label is derived once and then kept. The first run derives it from the host name (the
 short form before the first dot, lowercased, every run of characters outside ``[a-z0-9]``
-made one hyphen, the ends trimmed, capped at :data:`MAX_LABEL_LENGTH` -- and keeps it, one
+made one hyphen, the ends trimmed, capped at :data:`MAX_LABEL_LENGTH`) and keeps it, one
 line, in :data:`IDENTITY_NAME` under the tool's state base. Every later run reads that file,
 so a host-name change (macOS renames a machine on a network name clash) does not change the
 identity. A host name that leaves nothing gives :data:`FALLBACK_LABEL`.
@@ -81,8 +81,8 @@ def derive_label(hostname: str) -> str:
 def is_valid_label(label: str) -> bool:
     """Whether *label* is one :func:`derive_label` would leave as it is.
 
-    So it is one plain path component -- never empty, ``.`` or ``..``, and holding no ``/``
-    or NUL -- that sorts after a snapshot's timestamp without changing its order.
+    So it is one plain path component (never empty, ``.`` or ``..``, and holding no ``/``
+    or NUL) that sorts after a snapshot's timestamp without changing its order.
     """
     return len(label) <= MAX_LABEL_LENGTH and _LABEL.fullmatch(label) is not None
 

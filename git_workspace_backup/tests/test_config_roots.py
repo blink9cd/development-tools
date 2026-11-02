@@ -20,7 +20,7 @@ HOME = Path("/opt/fixture-home")
 VALID = """
 [tool.workspace_backup]
 destination = "~/Library/Mobile Documents/com~apple~CloudDocs/workspace-backup"
-extras = [".superpowers", "projects/site/src/__*"]
+extras = [".notes", "projects/site/src/__*"]
 regenerable = ["**/__pycache__"]
 claude_files = ["settings.json"]
 home_files = [".zshrc"]
@@ -47,7 +47,7 @@ class ConfigTests(unittest.TestCase):
                 destination=home
                 / "Library/Mobile Documents/com~apple~CloudDocs/workspace-backup",
                 keep=bc.DEFAULT_KEEP,
-                extras=(".superpowers", "projects/site/src/__*"),
+                extras=(".notes", "projects/site/src/__*"),
                 regenerable=("**/__pycache__",),
                 claude_files=("settings.json",),
                 home_files=(".zshrc",),
@@ -169,11 +169,11 @@ class ConfigTests(unittest.TestCase):
                 "keep is zero": 'destination = "/opt/d"\nkeep = 0',
             },
             "extras": {
-                "list not a list": 'destination = "/opt/d"\nextras = ".superpowers"',
+                "list not a list": 'destination = "/opt/d"\nextras = ".notes"',
                 "empty entry": 'destination = "/opt/d"\nextras = [""]',
                 "non-string entry": 'destination = "/opt/d"\nextras = [1]',
                 "parent entry": 'destination = "/opt/d"\nextras = ["../outside"]',
-                "trailing-slash entry": 'destination = "/opt/d"\nextras = [".superpowers/"]',
+                "trailing-slash entry": 'destination = "/opt/d"\nextras = [".notes/"]',
                 "bare dot entry": 'destination = "/opt/d"\nextras = ["."]',
             },
             "home_files": {

@@ -6,17 +6,17 @@ What these tests are actually defending
 Every assertion here corresponds to a way this library could be wrong *silently*,
 where the consuming gate would keep reporting PASS:
 
-* **The table name is a parameter, not a constant.** This library was extracted
-  from one gate's config layer, and the failure mode of such an extraction is a
-  leftover hardcoded table name that happens to match the first consumer. Both
-  readers are therefore made to read two DIFFERENT tables out of one document and
-  required to give different answers -- an implementation that ignored ``table=``
+* **The table name is a parameter, not a constant.** A reader generalized from one
+  gate's config layer fails by keeping a hardcoded table name that happens to match
+  that first consumer. Both
+  readers are therefore made to read two different tables out of one document and
+  required to give different answers: an implementation that ignored ``table=``
   and always read the first consumer's own table would pass a single-table test
   forever.
 * **Absence is empty; malformed is fatal.** A missing pyproject, a missing table
   and a missing key are all legitimately "no config" and must yield an empty
   result. A file that cannot be parsed, or a key holding something that is not a
-  list of strings, must RAISE -- treating unreadable config as empty is the false
+  list of strings, must raise. Treating unreadable config as empty is the false
   clean a gate exists to prevent, because it silently shrinks
   the set of things being checked.
 * **Nearest wins, and the base is the file's own directory.** Entries resolve
@@ -51,15 +51,15 @@ class ReadToolTableTest(unittest.TestCase):
     """The walk itself, exposed raw for consumers whose keys are not path lists.
 
     ``read_path_lists`` answers "what paths does my table declare?". A consumer
-    whose table holds SUB-TABLES (a scope-keyed mapping) cannot ask that question
-    and still needs the identical walk: nearest pyproject above the TARGET, absence
-    is empty, malformed STOPS the gate, entries resolve against the file's own
+    whose table holds sub-tables (a scope-keyed mapping) cannot ask that question
+    and still needs the identical walk: nearest pyproject above the target, absence
+    is empty, malformed stops the gate, entries resolve against the file's own
     directory. Exposing the walk is what keeps that policy in one place instead of
-    being re-decided -- and re-broken -- one folder over.
+    being re-decided, and re-broken, one folder over.
 
     The distinction these tests pin is the three-way one a raw reader must make and
     a path-list reader can collapse: no pyproject at all (``None``), a pyproject
-    that declares no table (``{}`` -- and the caller still needs its PATH, for the
+    that declares no table (``{}``, and the caller still needs its path, for the
     resolution base and for error messages), and a pyproject that declares one.
     """
 
@@ -87,7 +87,7 @@ class ReadToolTableTest(unittest.TestCase):
         """Distinct from ``None``: the file exists, so it is the resolution base.
 
         Collapsing these two would make a consumer unable to tell "nothing
-        configures me" from "nothing configures me HERE", and would leave it with
+        configures me" from "nothing configures me here", and would leave it with
         no directory to resolve a later-added entry against.
         """
         base = Path("/proj").resolve()
@@ -194,7 +194,7 @@ class ReadPathListsTest(unittest.TestCase):
         self.assertEqual(lists["allow_absent"], [(base / "prospective").resolve()])
 
     def test_the_table_name_selects_which_table_is_read(self) -> None:
-        """The extraction's core claim: nothing about one consumer is hardcoded."""
+        """The library's core claim: nothing about one consumer is hardcoded."""
         base = Path("/proj").resolve()
         body = (
             f"[tool.{_TABLE}]\n"
@@ -320,7 +320,7 @@ class ReadPathListsTest(unittest.TestCase):
             )
 
     def test_no_keys_requested_is_an_empty_mapping(self) -> None:
-        """A consumer asking for nothing gets nothing -- and still parses no file twice."""
+        """A consumer asking for nothing gets nothing, and still parses no file twice."""
         base = Path("/proj").resolve()
         lists = pc.read_path_lists(
             Path("/proj"),
@@ -392,7 +392,7 @@ class MessagesNameTheFileRelativelyTest(unittest.TestCase):
         )
 
     def test_os_error_names_the_file_relatively(self) -> None:
-        # str(OSError) carries its filename -- here the absolute path -- so the message
+        # str(OSError) carries its filename (here the absolute path), so the message
         # must quote only the error's own text beside the relative name.
         def missing(path: Path) -> str:
             raise FileNotFoundError(
@@ -427,11 +427,11 @@ class MessagesNameTheFileRelativelyTest(unittest.TestCase):
 
 
 class NearestWalkTest(unittest.TestCase):
-    """``nearest``: WHICH file answers, decided without reading it.
+    """``nearest``: which file answers, decided without reading it.
 
     Split out of the parse so a consumer can tell one source from another by identity.
     That matters for a table whose entries accumulate down a tree: read per subject
-    instead of per file, one shared declaration would be parsed -- and judged stale --
+    instead of per file, one shared declaration would be parsed, and judged stale,
     once for every subject that happens to sit beneath it.
     """
 
@@ -449,8 +449,8 @@ class ChainWalkTest(unittest.TestCase):
     """``chain``: every declaring file above a subject, bounded by the checkout.
 
     The bound is the point. An unbounded walk would let whatever pyproject happens to
-    sit above the checkout change a verdict -- the same host-independence rule the rest
-    of this library follows -- and that difference is invisible in any tree that has no
+    sit above the checkout change a verdict (the same host-independence rule the rest
+    of this library follows), and that difference is invisible in any tree that has no
     such file, which is most of them until one appears.
     """
 
@@ -463,7 +463,7 @@ class ChainWalkTest(unittest.TestCase):
         )
 
     def test_the_walk_stops_at_the_ceiling(self) -> None:
-        # A pyproject ABOVE the bound must not contribute, however real it is.
+        # A pyproject above the bound must not contribute, however real it is.
         root = Path("/proj").resolve()
         present = {root / "pyproject.toml", root.parent / "pyproject.toml"}
         found = pc.chain(root / "a", stop=root, is_file=present.__contains__)
@@ -484,8 +484,8 @@ class ChainWalkTest(unittest.TestCase):
         self.assertEqual(found, ())
 
     def test_no_pyproject_inside_the_bound_yields_nothing(self) -> None:
-        # Distinct from the case above only to the CALLER, which must not answer this
-        # one by widening the search upward -- that is what the bound forbids.
+        # Distinct from the case above only to the caller, which must not answer this
+        # one by widening the search upward: that is what the bound forbids.
         root = Path("/proj").resolve()
         found = pc.chain(root / "a", stop=root, is_file=lambda _p: False)
         self.assertEqual(found, ())

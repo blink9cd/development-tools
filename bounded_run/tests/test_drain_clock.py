@@ -129,7 +129,7 @@ def _release_a_slice_after(marker: Path, release: Path) -> Callable[[], bool]:
 
     The reading that first sees *marker*, written just after the child flushed its early line,
     only notes it. So the whole slice after that reading runs with the line already in the pipe,
-    and expires, because the child is still held. The reading after THAT expiry releases it.
+    and expires, because the child is still held. The reading after *that* expiry releases it.
     """
     seen = False
 
@@ -147,7 +147,7 @@ class WaitOnClockTests(unittest.TestCase):
     def test_each_slice_waits_the_smaller_of_a_slice_and_the_time_left(self) -> None:
         """Deadline 100: 100 left -> 30, 80 left -> 30, 25 left -> 25, then its streams return.
 
-        The fake answers only its last call, so output read in an EARLIER slice is not
+        The fake answers only its last call, so output read in an *earlier* slice is not
         exercised here: the live LiveSliceOutputTests below proves that part.
         """
         proc = _SlicedProc(expiries=2)
@@ -259,8 +259,8 @@ class SleepInclusiveClockTests(unittest.TestCase):
 class ClockDeadlineRegressionTests(unittest.TestCase):
     """A bound measured on a clock that jumps past it must kill the whole tree.
 
-    Without a clock run_bounded waits on time.monotonic(), which stops while a Mac sleeps:
-    measured, a two-hour bound never fired across a 15-hour lid-shut night. Compressed here:
+    Without a clock, run_bounded waits on time.monotonic(), which stops while a Mac sleeps: a
+    two-hour bound never fired across a 15-hour lid-shut night. Compressed here:
     the first reading sets a deadline an hour out, each later one leaves one real second until
     the fixture has recorded its grandchild, and the reading after that jumps past the deadline.
     """
@@ -300,7 +300,7 @@ class ClockWithStdinTests(unittest.TestCase):
 
     A sliced wait retries communicate(), and a retry may not pass the input again. On CPython
     3.12 and earlier a retry then never writes the rest of it, because the POSIX drain arms the
-    stdin pipe only for a truthy input ARGUMENT. Input larger than the pipe buffer would stall
+    stdin pipe only for a truthy ``input`` argument. Input larger than the pipe buffer would stall
     the child until the deadline, and the kill would read as a spurious timeout.
     """
 
