@@ -43,7 +43,7 @@ folders share a parent: keep them side by side.
 
 ## API
 
-### `run_bounded(argv, *, timeout, cwd=None, env=None, stdin_text=None, kill_tree_fn=kill_tree, clock=None, hide_window=False)`
+### `run_bounded(argv, *, timeout, cwd=None, env=None, stdin_text=None, kill_tree_fn=kill_tree, clock=None, hide_window=False, inherit_stderr=False)`
 
 Runs `argv` capturing text output; returns `subprocess.CompletedProcess[str]`. `argv` is a
 sequence of arguments: a `str` or `bytes` raises `TypeError` before anything is spawned, because
@@ -69,6 +69,19 @@ caller running under `pythonw.exe`, which has no console: Windows gives a consol
 of such a parent a new, visible console of its own. It is off by default, because a child of a
 console parent shares that console and should keep doing so. The flags are computed by
 `src/boundedrun_spawn_flags.py`.
+
+`inherit_stderr=True` gives the child this process's own stderr instead of a pipe, and the
+result's `stderr` is then `""`. It exists for a long child run for its stdout alone, such as a
+sweep whose report the caller parses: its progress lines reach the operator as they are written,
+instead of waiting in the pipe until it ends. Off by default, because most callers read the
+child's stderr, and a child's stray output on the caller's own stream is noise to the rest.
+The bytes sibling has no such option, because no caller needs one yet.
+
+Two consequences a caller owns. The child's stderr reaches the terminal raw, escape
+sequences included, with none of the sanitizing a caller applies to captured output, so
+pass it only for a child whose output you trust. And a parent with no stderr of its own,
+such as one run by `pythonw.exe`, has none to hand on, so the child's writes there go
+nowhere.
 
 ### `run_bounded_bytes(argv, *, timeout, cwd=None, env=None, stdin_bytes=None, kill_tree_fn=kill_tree, clock=None, hide_window=False)`
 

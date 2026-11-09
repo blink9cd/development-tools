@@ -368,12 +368,13 @@ def run_bounded(
     kill_tree_fn: KillTreeFn = kill_tree,
     clock: Clock | None = None,
     hide_window: bool = False,
+    inherit_stderr: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     """Run *argv*, capturing text output, bounded by *timeout* with a real tree kill.
 
     *stdin_text* feeds the child on stdin; a pipe is opened only when it is given, and a caller
     that passes nothing gets ``DEVNULL``, an immediate EOF. Deliberately not inheritance: this
-    run captures both stdout and stderr, so the child cannot be interactive anyway, and a child
+    run captures stdout, so the child cannot be interactive anyway, and a child
     that reads stdin then eats the caller's own. `dnf` does exactly that, so a probe launched
     from a script delivered on stdin (``bash -s``, ``curl | bash``) silently swallowed the rest
     of that script and the shell exited 0. DEVNULL is also not the hazard inheritance was chosen
@@ -389,6 +390,12 @@ def run_bounded(
     *hide_window* starts the child with no console window on Windows, and is ignored elsewhere.
     A console-subsystem child of a parent with no console (``pythonw.exe``) is otherwise given a
     new, visible one.
+
+    *inherit_stderr* gives the child this process's own stderr instead of a pipe, so whatever
+    it writes there reaches the operator as it is written, and the result's ``stderr`` is
+    ``""``; past *timeout*, the raised ``TimeoutExpired``'s ``stderr`` is ``None``. For a
+    long child run for its stdout alone, whose progress lines would otherwise wait in the
+    pipe until it ends.
 
     Deliberately not used as a context manager: ``Popen.__exit__`` calls an unbounded ``wait()``,
     which would reintroduce the very hang this module removes on the failed-kill path.
@@ -406,8 +413,11 @@ def run_bounded(
         errors=stdio_utf8.CAPTURE_ERRORS,
         drain=_drainer(argv, timeout, kill_tree_fn, stdin_text, clock),
         kill_tree_fn=kill_tree_fn,
+        inherit_stderr=inherit_stderr,
     )
-    return subprocess.CompletedProcess(list(argv), proc.returncode, stdout, stderr)
+    # An inherited stderr was never read here: the drain returned None for it.
+    captured = "" if inherit_stderr else stderr
+    return subprocess.CompletedProcess(list(argv), proc.returncode, stdout, captured)
 
 
 def run_bounded_bytes(

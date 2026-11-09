@@ -266,6 +266,11 @@ def _abandon_overdue(proc: subprocess.Popen[str]) -> None:
     wait, where SIGKILL cannot end it until the kernel lets go. An unbounded reap there blocks
     the stop handler that called the kill, and the run it was stopping hangs with it. A ``ps``
     left unreaped exits once the kernel releases it, and ``subprocess`` reaps it later.
+
+    The bound holds on POSIX only, the one platform that calls it: there ``communicate`` reads
+    in this thread, so nothing else holds ``stdout`` when it is closed. On Windows a helper
+    thread is still blocked reading it, holding the stream's lock, so the close waits for the
+    child to exit.
     """
     proc.kill()
     with contextlib.suppress(subprocess.TimeoutExpired):

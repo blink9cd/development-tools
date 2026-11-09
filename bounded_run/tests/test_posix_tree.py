@@ -1,8 +1,8 @@
 """The POSIX tree kill in parts: the ps parser, the group walk, the frozen check and the loop.
 
-All but the live ``ps`` test run on every host. The loop takes its signal call, its signal
-numbers and its process table as seams and treats the numbers as opaque, so a recorder and
-scripted tables pin its order (freeze before walking, every stop before any kill) with no
+All but the live ``ps`` test and the unkillable-``ps`` abandon test run on every host. The
+loop takes its signal call, its signal numbers and its process table as seams and treats the
+numbers as opaque, so a recorder and scripted tables pin its order (freeze before walking, every stop before any kill) with no
 process at risk. The live nested-session test pins the real signals end to end.
 """
 
@@ -371,6 +371,13 @@ class TakeSnapshotTests(unittest.TestCase):
         # for minutes, where SIGKILL cannot end it, and the snapshot's post-kill reap waited
         # with no bound, inside a stop handler, so a stopped run hung.
         # A Popen whose kill does nothing stands in for that process, deterministically.
+        if sys.platform == "win32":
+            # The abandon is POSIX behavior, and so is the hazard it answers: its only
+            # production caller is `kill_tree_posix`. On Windows `communicate` reads stdout
+            # in a helper thread that keeps blocking in its read past the timeout, holding
+            # the stream's lock, so the abandon's close waits for the child to exit: with a
+            # kill that never lands, the stand-in's full 60 s (CI run 41509444392).
+            self.skipTest("the post-kill abandon is POSIX; win32 kills through a job")
         _UnkillablePopen.started.clear()
         self.addCleanup(_UnkillablePopen.end_every_child)
         argv = (sys.executable, "-c", "import time; time.sleep(60)")

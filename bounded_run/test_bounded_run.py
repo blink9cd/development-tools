@@ -428,6 +428,7 @@ _MIN_GROUPED_TESTS_BY_FILE = {
     "test_drain_entry_window.py": 3,
     "test_drain_interrupt.py": 6,
     "test_fixture_lifetime.py": 2,
+    "test_inherit_stderr.py": 2,
     "test_job_containment.py": 8,
     "test_kernel_job_api.py": 13,
     "test_live_registry.py": 11,

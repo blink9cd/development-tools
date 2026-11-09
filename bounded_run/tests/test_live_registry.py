@@ -228,6 +228,31 @@ def _child_tracked(pids: live_pid_guard.FixturePids) -> bool:
     return recorded in bounded_run.live_pids()  # pragma: only-on posix
 
 
+def _await_the_untracked_childs_grandchild() -> None:
+    """Wait, from inside the held-back tracking, for the grandchild where it can appear there.
+
+    On POSIX the child runs before it is tracked, so its grandchild's record lands inside
+    the gap, and waiting for it makes the gap certain. On Windows the child is created
+    suspended and is resumed only once it is in its job, after it is tracked, so no
+    grandchild exists yet: waiting here would hold the tracking until the ready ceiling, the
+    readiness check would give up first, and the kill would find nothing (CI saw exactly
+    that, ``0 != 1``). There the gap cannot open on any record, since the suspended child
+    writes none until it is tracked, so on Windows the test proves only that a child tracked
+    late is still killed; telling the gap apart is proven on POSIX, the one host it exists on.
+    """
+    if sys.platform == "win32":
+        return  # pragma: only-on win32
+    _await_the_grandchilds_record()  # pragma: only-on posix
+
+
+def _await_the_grandchilds_record() -> None:  # pragma: only-on posix
+    """Poll until the fixture records its grandchild's pid, or the ready ceiling passes."""
+    grandchild = Path(os.environ[live_pid_guard.GRANDCHILD_PID_ENV])
+    give_up = time.monotonic() + _READY_CEILING
+    while not _recorded(grandchild) and time.monotonic() < give_up:
+        time.sleep(_RECORD_POLL_SECONDS)
+
+
 class LiveKillTests(unittest.TestCase):
     """A real child and grandchild, mid-run, are both gone once `kill_live_trees` returns."""
 
@@ -247,10 +272,7 @@ class LiveKillTests(unittest.TestCase):
         real_track = boundedrun_live.track
 
         def late_track(pid: int) -> None:
-            grandchild = Path(os.environ[live_pid_guard.GRANDCHILD_PID_ENV])
-            give_up = time.monotonic() + _READY_CEILING
-            while not _recorded(grandchild) and time.monotonic() < give_up:
-                time.sleep(_RECORD_POLL_SECONDS)
+            _await_the_untracked_childs_grandchild()
             window_ends = time.monotonic() + _LATE_TRACK_SECONDS
             while time.monotonic() < window_ends:
                 time.sleep(_RECORD_POLL_SECONDS)

@@ -167,7 +167,7 @@ class InterruptAfterSpawnTracerTests(unittest.TestCase):
     def test_an_event_in_another_frame_does_not_fire_it(self) -> None:
         # On Windows the first event after Popen returns is the call of the dropped thread
         # handle's finalizer, Handle.Close, where a raised interrupt is only reported as
-        # "Exception ignored": the run went on, and the live test hung (toolkit 182).
+        # "Exception ignored": the run went on, and the live test hung.
         caller = mock.Mock(f_back=None)
         popen = mock.Mock(f_code=subprocess.Popen.__init__.__code__, f_back=caller)
         popen.f_locals = {"self": mock.Mock(pid=4321)}

@@ -2,6 +2,21 @@
 
 Notable changes to this project, newest first.
 
+## 0.2.1 - 2026-11-09
+
+### Added
+
+- `bounded_run`'s `run_bounded` takes `inherit_stderr=True`, which gives the child the
+  caller's own stderr instead of a pipe, so a long run's progress lines appear as they
+  are written rather than when it ends. The result's `stderr` is then `""`.
+
+### Fixed
+
+- Two of `bounded_run`'s tests failed on Windows and now run only where their subject
+  does. The check that an unkillable `ps` is abandoned runs on POSIX alone, as its only
+  caller does, and the late-tracking live test waits for a grandchild process on POSIX
+  alone, since on Windows the child is still suspended at that point.
+
 ## 0.2.0 - 2026-11-02
 
 ### Added

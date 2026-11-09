@@ -113,8 +113,12 @@ def run_text(
     errors: str,
     drain: Callable[[subprocess.Popen[str]], _Drained],
     kill_tree_fn: KillTreeFn,
+    inherit_stderr: bool = False,
 ) -> tuple[subprocess.Popen[str], _Drained]:
     """Start *argv* piped as text in *encoding*, register it, drain it, and forget it.
+
+    *inherit_stderr* leaves the child's stderr on this process's own, unpiped, so the drain
+    returns ``None`` in its place.
 
     The registration is the statement right after ``Popen``, in this frame, with nothing
     between: no frame returns the object first. An interrupt raised anywhere after ``Popen``
@@ -133,7 +137,7 @@ def run_text(
                 env=env,
                 stdin=_stdin_mode(piped_stdin),
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stderr=None if inherit_stderr else subprocess.PIPE,
                 encoding=encoding,
                 errors=errors,
                 # Verified accepted on win32 as well as POSIX, so no platform branch is needed. On
