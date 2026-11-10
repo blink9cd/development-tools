@@ -1,8 +1,9 @@
 {
   "files": {
     ".gitignore": "sha256:42eae550700e597864126a762545fe2f11eca00b858a903c45f8cbd996db71e9",
-    "CHANGELOG.md": "sha256:a279891f7569786b97cf9e7162bb8d6418ed9c9d0d4d2c566df05a49526e2626",
-    "LICENSE": "sha256:480bc086cc31abd0ec8598db97abf2a5490bf30613bc209342a4e2c71a0f8b87",
+    "CHANGELOG.md": "sha256:41c7f0cdc281cb129ad8f7e4705b2c1c8fcc8906b23fa9bae3706b2ec86ad318",
+    "LICENSE": "sha256:57c8ff33c9c0cfc3ef00e650a1cc910d7ee479a8bc509f6c9209a7c2a11399d6",
+    "NOTICE": "sha256:327ceae4f0e5a0b8baa3c5cef657cc5bf1ed0d00964e056974dd774243224489",
     "README.md": "sha256:16ecaadf993f7a6b2c5325713aacf645f6b28c9f2079fafcc029da11b6d68f45",
     "atomic_write/atomic_write.md": "sha256:eede90138a069498b462ef825d213d3306df823e36582bf639a65cb4732c355d",
     "atomic_write/atomic_write.py": "sha256:ab523ff81906b30ecdac7e2bb564ce3714d73ce1b4cd5646b3a1e6ba0af85dc3",
@@ -154,7 +155,7 @@
     "os_schedule_gen/tests/test_samples.py": "sha256:bde0dd80b15e523a9b7695fb6c8f19cfe7395305f58232c6215f44c4e2ec318c",
     "os_schedule_gen/tests/test_schedule_forms.py": "sha256:7d4233924d68c689e90f866d7014ce05ec01bb66241f1a6391699f5eadffe537",
     "os_schedule_gen/tests/test_task_xml.py": "sha256:b0859696d24c38c47286cd8ad27934cce90be0ee5b3617b69c7ec6a13c7c9fe4",
-    "pyproject.toml": "sha256:d498ca303cf32d1d742891fdcb9c237d72d3e60e4eb998df634652ec975057bc",
+    "pyproject.toml": "sha256:db0af55b912c5e57d7d4110bdeca78e5e23fe086db7425f82149cf1db8d27f06",
     "pyproject_config/pyproject_config.md": "sha256:8dbde462757048e4103a57b38a52287b6603207a3534d130b3d48af96ccd2174",
     "pyproject_config/pyproject_config.py": "sha256:48401b3cacf697446109392f19b2eed515e691f285d2130e74ab350ebbd96e84",
     "pyproject_config/test_pyproject_config.py": "sha256:5586990317fe180f425d7c527b02e547c5ad52eb16c74bef961e55a0145137fd",
@@ -172,6 +173,6 @@
   },
   "name": "development-tools",
   "schema": 1,
-  "source_commit": "a34e3f49f660cbf6bfd6f0926cf2bfe06d9dbf06",
-  "version": "0.2.1"
+  "source_commit": "9afc032130366c58dfaa87269ce45983b633921e",
+  "version": "0.2.2"
 }

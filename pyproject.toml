@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "development-tools"
-version = "0.2.1"
+version = "0.2.2"
 description = "Tools for working with a git workspace: a daily, verified backup of a checkout's un-pushed work to iCloud Drive"
 readme = "README.md"
 license = "AGPL-3.0-or-later"
