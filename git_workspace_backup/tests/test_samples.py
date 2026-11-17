@@ -37,6 +37,8 @@ EMPTY_ROOT_REFUSAL = "RESTORE_ROOT must be empty"
 #: The step placing the archive, and the note after it that the samples README lists.
 FILES_HEADING = "## Files"
 SECOND_MACHINE_HEADING = "## Setting up a second machine"
+#: The pointer at --mode verify, which the README lists before the first run block.
+VERIFY_HEADING = "## Verify before you restore"
 #: The re-arm step's fence opens by changing into the restored workspace.
 REARM_CD = 'cd "$RESTORE_ROOT/workspace"'
 #: The setup document the sample config names, an obvious example.
@@ -83,6 +85,10 @@ class SampleManifestTests(unittest.TestCase):
         # The machine beside Created: an obvious fixture label, never a real host name.
         self.assertEqual(manifest.machine, SAMPLE_MACHINE)
         self.assertIn(f"on machine `{SAMPLE_MACHINE}`; complete: yes", doc)
+        # The verify pointer, before any block that runs, and itself never one.
+        self.assertIn("cannot vouch for itself", doc)
+        self.assertLess(doc.index(VERIFY_HEADING), doc.index("```sh"))
+        self.assertIn('--mode verify --snapshot "$SNAPSHOT"', doc)
         blocks = extract_sh_blocks(doc)
         # One run block per bundle, then the files block.
         self.assertEqual(len(blocks), len(manifest.bundles) + 1)

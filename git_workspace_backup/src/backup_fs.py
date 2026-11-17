@@ -1,4 +1,4 @@
-"""Filesystem primitives: atomic writes, hashing, bounded reads, the run lock, a rooted reader.
+"""Filesystem primitives: atomic writes, hashing, bounded reads, a rooted reader.
 
 The temp-then-replace itself is the shared ``atomic_write`` library's; the two
 writers here only add this tool's parent-directory creation and its mode.
@@ -25,30 +25,6 @@ sys.path.append(str(Path(__file__).resolve().parents[2] / "atomic_write"))
 
 import atomic_write  # noqa: E402 - import follows the sys.path bootstrap above
 from backup_json import is_safe_relative_name  # noqa: E402 - same bootstrap
-
-# flock(2) is POSIX-only, and the tool refuses any platform but macOS. The split is an
-# ``if``, not a module-level ``assert``: a type check is also run for win32, and such an
-# assert makes that pass skip everything below it, so every module importing this one then
-# fails there on attributes it can no longer see. The win32 arm exists only for that pass.
-if sys.platform == "win32":
-
-    def _flock(fd: int, operation: int) -> None:  # pragma: only-on win32
-        """Refuse: Windows has no flock(2), and this tool never runs there."""
-        raise OSError(errno.ENOSYS, "RunLock needs flock(2), which Windows lacks")
-
-    _LOCK_EXCLUSIVE_NOWAIT = _LOCK_RELEASE = 0  # pragma: only-on win32
-    _OPEN_PROBE = os.O_RDONLY  # pragma: only-on win32
-    _OPEN_LOCK = os.O_RDWR | os.O_CREAT  # pragma: only-on win32
-else:  # pragma: only-on posix
-    from fcntl import LOCK_EX, LOCK_NB, LOCK_UN
-    from fcntl import flock as _flock
-
-    _LOCK_EXCLUSIVE_NOWAIT = LOCK_EX | LOCK_NB
-    _LOCK_RELEASE = LOCK_UN
-    #: A probe opens the lock read-only, and never waits in open() on a FIFO put in its place.
-    #: Neither it nor a holder opens the lock through a symlink planted in its place.
-    _OPEN_PROBE = os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW
-    _OPEN_LOCK = os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW
 
 #: Chunk size for streaming a file into a digest without loading it whole.
 _HASH_CHUNK = 1 << 20
@@ -148,76 +124,10 @@ def read_bytes_bounded(
     return result[0] if result else None
 
 
-class RunLock:
-    """An exclusive, non-blocking ``flock`` held for the life of one run.
-
-    ``flock`` locks belong to the open file description, so a second ``RunLock`` on the same
-    path, in this process or another, is refused until the first releases.
-    """
-
-    def __init__(self, path: Path) -> None:
-        """Bind the lock to *path*; nothing is opened until :meth:`acquire`."""
-        self._path = path
-        self._fd: "int | None" = None
-
-    def acquire(self) -> bool:
-        """Take the lock; False, without waiting, when another holder has it.
-
-        Any other error closes the descriptor before it is raised: a failed attempt holds
-        nothing open.
-        """
-        make_private_dirs(self._path.parent)
-        fd = os.open(self._path, _OPEN_LOCK, PRIVATE_FILE_MODE)
-        try:
-            _flock(fd, _LOCK_EXCLUSIVE_NOWAIT)
-        except BlockingIOError:
-            os.close(fd)
-            return False
-        except OSError:
-            os.close(fd)
-            raise
-        self._fd = fd
-        return True
-
-    def release(self) -> None:
-        """Drop the lock if held; the lock file itself stays for the next run.
-
-        The descriptor is closed even when unlocking raises, and closing it drops the lock.
-        """
-        if self._fd is None:
-            return
-        fd, self._fd = self._fd, None
-        try:
-            _flock(fd, _LOCK_RELEASE)
-        finally:
-            os.close(fd)
-
-
-def lock_is_held(path: Path) -> bool:
-    """Whether another holder has :class:`RunLock`'s flock on *path*, asked without waiting.
-
-    Nothing is created: every holder creates the lock file, so an absent one is free. The
-    lock is taken without blocking and let go at once, and the descriptor is closed whatever
-    happens. An existing file that cannot be opened (no permission to read it) raises
-    OSError, since whether it is held is then unknown.
-    """
-    try:
-        fd = os.open(path, _OPEN_PROBE)
-    except FileNotFoundError:
-        return False
-    try:
-        _flock(fd, _LOCK_EXCLUSIVE_NOWAIT)
-    except BlockingIOError:
-        return True
-    else:
-        _flock(fd, _LOCK_RELEASE)
-        return False
-    finally:
-        os.close(fd)
-
-
-# O_NOFOLLOW, O_NONBLOCK and set_blocking are POSIX-only. The split is an ``if``, as above:
-# a type check is also run for win32, and the win32 arm exists only for that pass.
+# O_NOFOLLOW, O_NONBLOCK and set_blocking are POSIX-only. The split is an ``if``, not a
+# module-level ``assert``: a type check is also run for win32, and such an assert makes that
+# pass skip everything below it, so every module importing this one then fails there on
+# attributes it can no longer see. The win32 arm exists only for that pass.
 if sys.platform == "win32":
 
     def _open_regular(
@@ -285,3 +195,124 @@ def read_regular_file(
     if limit is not None and len(data) > limit:
         raise OSError(errno.EFBIG, f"{rel} holds more than {limit} bytes")
     return data, status
+
+
+#: Reads *count* bytes from a descriptor; ``os.read`` but for tests.
+ReadFdFn = Callable[[int, int], bytes]
+#: The file flag macOS sets on a file iCloud evicted, leaving its name and no data
+#: (``SF_DATALESS`` in sys/stat.h). The stat module names it only from Python 3.13, so the
+#: header's value stands in on darwin; elsewhere no file carries it.
+_DARWIN_SF_DATALESS = 0x40000000
+SF_DATALESS: int = getattr(
+    stat, "SF_DATALESS", _DARWIN_SF_DATALESS if sys.platform == "darwin" else 0
+)
+
+
+class ReadStalled(Exception):
+    """A bounded hash read no data within its stall bound, and was abandoned."""
+
+
+class FileOffloaded(Exception):
+    """The file is dataless: iCloud evicted its data, and reading it would fetch it first."""
+
+
+class SizeChanged(Exception):
+    """The opened file's size is not the one the caller expected, so it was never read."""
+
+    def __init__(self, rel: str, size: int) -> None:
+        """Name the file *rel* and the *size* its descriptor reported."""
+        super().__init__(f"{rel} holds {size} bytes")
+        #: The size the opened descriptor reported.
+        self.size = size
+
+
+class _HashProgress:
+    """What a hashing worker has read so far, shared with the thread watching it."""
+
+    def __init__(self) -> None:
+        """An empty digest, no chunks yet, and the done and cancel flags clear."""
+        self.digest = hashlib.sha256()
+        self.size = 0
+        self.chunks = 0
+        self.error: "Exception | None" = None
+        self.done = threading.Event()
+        #: Set by the watcher when it gives up, so an abandoned worker stops between chunks.
+        self.cancel = threading.Event()
+
+
+def hash_regular_file_bounded(
+    root: Path,
+    rel: str,
+    stall_s: float,
+    *,
+    expected_size: "int | None" = None,
+    read: ReadFdFn = os.read,
+) -> "tuple[str, int]":
+    """Hex sha256 and size of the regular file *rel* under *root*, read in chunks on a watchdog.
+
+    Opened as :func:`read_regular_file` opens it, so a symlink, a FIFO or anything but a
+    regular file raises OSError, and so does an unsafe *rel*. A dataless file (iCloud evicted
+    its data) raises FileOffloaded before any read, and so does a file whose descriptor reports
+    a size other than *expected_size*, given one, with SizeChanged: a file swapped for a far
+    larger one, a sparse one say, is then never read to its end. The bound is on progress, not on the
+    whole read: a read that keeps returning data is never cut off, but one that yields no
+    chunk within *stall_s*, as an iCloud file can while it is fetched, raises ReadStalled and
+    tells the worker to stop at its next chunk. Whatever the worker raised, OSError or not,
+    is raised here, so a partial digest is never returned.
+    """
+    progress = _HashProgress()
+    worker = threading.Thread(
+        target=_hash_into,
+        args=(root, rel, expected_size, read, progress),
+        daemon=True,
+    )
+    worker.start()
+    seen = 0
+    # Each bound that passes with a new chunk read waits again; one that passes with none
+    # gives up, unless the worker finished in the gap since the wait. The wait is the poll
+    # interval, so no separate sleep is needed.
+    while not progress.done.wait(stall_s):
+        if progress.chunks == seen and not progress.done.is_set():
+            progress.cancel.set()
+            raise ReadStalled(f"{rel}: no data within {stall_s:g} s")
+        seen = progress.chunks
+    if progress.error is not None:
+        raise progress.error
+    return progress.digest.hexdigest(), progress.size
+
+
+def _hash_into(
+    root: Path,
+    rel: str,
+    expected_size: "int | None",
+    read: ReadFdFn,
+    progress: _HashProgress,
+) -> None:
+    """Hash *rel* under *root* into *progress*, recording any error and then setting done."""
+    try:
+        fd, status = _open_regular(root, rel)
+        try:
+            if getattr(status, "st_flags", 0) & SF_DATALESS:
+                raise FileOffloaded(f"{rel} is in iCloud only: its data is not here")
+            # The descriptor's own size, so no rename after the open can answer for it.
+            if expected_size is not None and status.st_size != expected_size:
+                raise SizeChanged(rel, status.st_size)
+            _read_chunks(fd, read, progress)
+        finally:
+            os.close(fd)
+    # Any error, not only OSError: it is raised again by the caller, never swallowed.
+    except Exception as exc:
+        progress.error = exc
+    finally:
+        progress.done.set()
+
+
+def _read_chunks(fd: int, read: ReadFdFn, progress: _HashProgress) -> None:
+    """Feed *fd* into *progress* until end of file, or until the watcher cancels."""
+    while not progress.cancel.is_set():
+        chunk = read(fd, _HASH_CHUNK)
+        if not chunk:
+            return
+        progress.digest.update(chunk)
+        progress.size += len(chunk)
+        progress.chunks += 1

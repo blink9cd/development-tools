@@ -48,7 +48,9 @@ sys.path.insert(0, str(_SUITE_DIR))
 # itself and pass for an empty suite, which is the defect this guard exists to catch.
 _MIN_TESTS_BY_FILE: dict[str, int] = {
     "test_entry_meaning.py": 8,
+    "test_hostile_input.py": 22,
     "test_internals.py": 15,
+    "test_properties.py": 2,
     "test_reading.py": 25,
 }
 # This module's own tests: the guards below, which are the only reason the file exists.

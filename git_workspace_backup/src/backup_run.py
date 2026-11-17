@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import os
 import stat
+import sys
 import traceback
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
@@ -42,7 +43,7 @@ from typing import TextIO
 
 from backup_build import BuildRequest, build_snapshot, memory_repos
 from backup_config import BackupConfig
-from backup_fs import RunLock, read_bytes_bounded, sha256_bytes
+from backup_fs import read_bytes_bounded, sha256_bytes
 from backup_machine import MachineError, ensure_identity, identity_path, read_identity
 from backup_ledger import (
     LedgerError,
@@ -79,6 +80,12 @@ from backup_promote import (
 from backup_roots import Roots
 from backup_seal import manifest_bytes, verify_in_scratch, write_snapshot_records
 from backup_staging import StagingError, fresh_staging
+
+# run_lock, the shared kernel-released run lock, at one fixed place: its folder directly
+# under the repository root, as backup_proc.py places bounded_run.
+sys.path.append(str(Path(__file__).resolve().parents[2] / "run_lock"))
+
+import run_lock  # noqa: E402 - import follows the sys.path bootstrap above
 
 LOCK_NAME = "run.lock"
 STAGING_DIR = "staging"
@@ -143,13 +150,14 @@ def run_backup(request: RunRequest, deps: RunDeps) -> int:
         return _print_plan(request, deps)
     base = Path(os.path.realpath(request.base))
     state = state_dir_for(base, request.config.destination)
-    lock = RunLock(lock_path(request.base))
     try:
-        held = lock.acquire()
+        # Private: a symlink planted at the lock is refused (ELOOP) rather than followed, and
+        # what the take creates is this user's alone, as everything else under the base is.
+        lock = run_lock.acquire(lock_path(request.base), private=True)
     except OSError as exc:
         detail = f"could not take the run lock: {exc}"
         return _finish(state, deps, _Outcome(OUTCOME_FAILED, detail, EXIT_UNRUNNABLE))
-    if not held:
+    if lock is None:
         # Printed, never recorded: the holder's record (a failure it is posting right now,
         # say) must outlive a skip that races it, and only the holder writes under the lock.
         print(f"{OUTCOME_SKIPPED}: {HELD_LOCK_DETAIL}", file=deps.err)

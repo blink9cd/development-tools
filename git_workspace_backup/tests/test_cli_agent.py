@@ -2,7 +2,7 @@
 """``--mode install`` and ``--mode uninstall`` through the CLI: what the agent is built from.
 
 launchctl never runs for real: FakeLaunchctl answers every verb, and the waiter's clock is a
-counter, so a wait that never settles ends in a few reads rather than sleeping.
+counter, so a wait that never settles ends in reads rather than in sleeping.
 """
 
 from __future__ import annotations
@@ -20,10 +20,11 @@ import _cli_case as cc
 import _fixtures as fx
 
 import backup_launchd
+import launchd_agent
 import backup_run
 import os_schedule_gen
+import run_lock
 import git_workspace_backup as wb
-from backup_fs import RunLock
 
 #: The one line install and uninstall print while a backup run holds the lock, restated.
 IN_PROGRESS = "a backup run is in progress; retry when it finishes"
@@ -87,7 +88,7 @@ class AgentCliTests(cc.CliCase):
     def test_install_bakes_this_hosts_facts_and_uninstall_removes_the_agent(
         self,
     ) -> None:
-        self.launchctl.prints = [backup_launchd.PRINT_ABSENT_RC, 0]
+        self.launchctl.prints = [launchd_agent.PRINT_ABSENT_RC, 0]
         self.assertEqual(self.main("--mode", "install", "--time", "07:30"), 0)
         plist_file = backup_launchd.plist_path(self.tree.home)
         plist = plistlib.loads(plist_file.read_bytes())
@@ -110,15 +111,15 @@ class AgentCliTests(cc.CliCase):
         self.assertTrue(logs.is_dir())
         domain = f"gui/{cc.FIXTURE_UID}"
         self.assertIn(
-            [backup_launchd.LAUNCHCTL, "bootstrap", domain, str(plist_file)],
+            [launchd_agent.LAUNCHCTL, "bootstrap", domain, str(plist_file)],
             self.launchctl.argvs,
         )
-        self.launchctl.settled = backup_launchd.PRINT_ABSENT_RC
+        self.launchctl.settled = launchd_agent.PRINT_ABSENT_RC
         self.assertEqual(self.main("--mode", "uninstall"), 0)
         self.assertFalse(plist_file.exists())
 
     def test_install_default_time_is_the_documented_default(self) -> None:
-        self.launchctl.prints = [backup_launchd.PRINT_ABSENT_RC, 0]
+        self.launchctl.prints = [launchd_agent.PRINT_ABSENT_RC, 0]
         self.assertEqual(self.main("--mode", "install"), 0)
         plist = plistlib.loads(backup_launchd.plist_path(self.tree.home).read_bytes())
         default = os_schedule_gen.parse_daily_time(backup_launchd.DEFAULT_TIME)
@@ -174,8 +175,8 @@ class AgentCliTests(cc.CliCase):
         # The lock the run itself takes, spelled from the same constants: bootout would kill
         # that run, and its git children, in sessions of their own, would write on.
         base = self.tree.home / wb.STATE_BASE_NAME
-        holder = RunLock(base / backup_run.LOCK_NAME)
-        self.assertTrue(holder.acquire())
+        holder = run_lock.acquire(base / backup_run.LOCK_NAME, private=True)
+        assert holder is not None
         self.addCleanup(holder.release)
         plist = backup_launchd.plist_path(self.tree.home)
         for argv in (("install",), ("install", "--dry-run")):
@@ -186,16 +187,18 @@ class AgentCliTests(cc.CliCase):
                 self.assertFalse(plist.exists())
         with self.subTest("uninstall"):
             self.write_plist()
-            self.launchctl.settled = backup_launchd.PRINT_ABSENT_RC
+            self.launchctl.settled = launchd_agent.PRINT_ABSENT_RC
             self.assertEqual(self.main("--mode", "uninstall"), 2)
             self.assert_one_error_line(IN_PROGRESS)
             self.assertEqual(self.launchctl.argvs, [])
             self.assertTrue(plist.exists())
         holder.release()
         # Released, the same install goes ahead, and the probe has left the lock free.
-        self.launchctl.prints = [backup_launchd.PRINT_ABSENT_RC, 0]
+        self.launchctl.prints = [launchd_agent.PRINT_ABSENT_RC, 0]
         self.assertEqual(self.main("--mode", "install"), 0)
-        self.assertTrue(holder.acquire())
+        after = run_lock.acquire(base / backup_run.LOCK_NAME, private=True)
+        assert after is not None
+        after.release()
 
     def test_a_lock_no_run_could_open_refuses_install_but_never_uninstall(
         self,
@@ -229,7 +232,7 @@ class AgentCliTests(cc.CliCase):
                 self.assertEqual(self.launchctl.argvs, [])
                 self.assertFalse(plist.exists())
                 self.write_plist()
-                self.launchctl.settled = backup_launchd.PRINT_ABSENT_RC
+                self.launchctl.settled = launchd_agent.PRINT_ABSENT_RC
                 self.assertEqual(self.main("--mode", "uninstall"), 0)
                 self.assertFalse(plist.exists())
                 self.assertIn("bootout", [argv[1] for argv in self.launchctl.argvs])
@@ -268,7 +271,7 @@ class AgentCliTests(cc.CliCase):
     def test_uninstall_needs_neither_a_checkout_nor_a_configuration(self) -> None:
         plist = self.write_plist()
         (self.tree.workspace / "pyproject.toml").unlink()
-        self.launchctl.settled = backup_launchd.PRINT_ABSENT_RC
+        self.launchctl.settled = launchd_agent.PRINT_ABSENT_RC
         outside = replace(self.host(), start=self.tmp)
         self.assertEqual(self.main("--mode", "uninstall", host=outside), 0)
         self.assertFalse(plist.exists())
@@ -276,7 +279,7 @@ class AgentCliTests(cc.CliCase):
     def test_uninstall_refuses_dry_run_rather_than_uninstalling(self) -> None:
         plist = self.write_plist()
         # launchd would confirm the agent gone, so an uninstall that ran would succeed.
-        self.launchctl.settled = backup_launchd.PRINT_ABSENT_RC
+        self.launchctl.settled = launchd_agent.PRINT_ABSENT_RC
         self.assertEqual(self.main("--mode", "uninstall", "--dry-run"), 2)
         self.assert_one_error_line("--dry-run")
         self.assertIn("--mode uninstall", self.err.getvalue())
@@ -289,7 +292,7 @@ class AgentCliTests(cc.CliCase):
         plist = self.write_plist()
         self.launchctl.settled = 0
         self.assertEqual(self.main("--mode", "uninstall"), 2)
-        self.assertIn("did not unload", self.err.getvalue())
+        self.assertIn("still loaded", self.err.getvalue())
         self.assertTrue(plist.exists())
 
 

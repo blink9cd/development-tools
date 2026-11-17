@@ -19,8 +19,14 @@ from pathlib import Path
 from typing import TextIO
 
 from backup_checkout import Refused
-from backup_fs import PRIVATE_DIR_MODE, lock_is_held
+from backup_fs import PRIVATE_DIR_MODE
 from backup_run import lock_path
+
+# run_lock, the shared kernel-released run lock, at one fixed place: its folder directly
+# under the repository root, as backup_proc.py places bounded_run.
+sys.path.append(str(Path(__file__).resolve().parents[2] / "run_lock"))
+
+import run_lock  # noqa: E402 - import follows the sys.path bootstrap above
 
 #: What install and uninstall refuse with while a backup run holds the run lock.
 RUN_IN_PROGRESS = "a backup run is in progress; retry when it finishes"
@@ -147,7 +153,9 @@ def refuse_during_a_run(base: Path, err: TextIO, *, uninstalling: bool = False) 
     """
     path = lock_path(base)
     try:
-        held = lock_is_held(path)
+        # Private, as the run takes it: a symlink in the lock's place is refused (ELOOP), so
+        # the probe never opens the file it names.
+        held = run_lock.is_held(path, private=True)
     except OSError as exc:
         # Deliberately asymmetric. Uninstall warns and goes ahead: refusing protects no run and
         # would leave the agent impossible to remove. Install refuses: every run of the agent

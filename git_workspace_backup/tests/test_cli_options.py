@@ -26,15 +26,19 @@ SAMPLES: "dict[str, list[str]]" = {
     "destination": ["--destination", "/opt/fixture-dest"],
     "dry_run": ["--dry-run"],
     "repo": ["--repo", "/opt/fixture-repo"],
+    "snapshot": ["--snapshot", "/opt/fixture-dest/2026-09-14T060000"],
 }
 #: Each row's command line, and the options it refuses. ``--dry-run`` is not refusable for
 #: ``run``: giving it selects the dry-run row instead.
 REFUSED: "dict[tuple[str, ...], frozenset[str]]" = {
-    ("run",): frozenset({"time"}),
-    ("run", "--dry-run"): frozenset({"if_due", "time"}),
-    ("status",): frozenset({"if_due", "time", "dry_run"}),
-    ("install",): frozenset({"if_due", "keep"}),
-    ("uninstall",): frozenset({"if_due", "time", "keep", "destination", "dry_run"}),
+    ("run",): frozenset({"time", "snapshot"}),
+    ("run", "--dry-run"): frozenset({"if_due", "time", "snapshot"}),
+    ("status",): frozenset({"if_due", "time", "dry_run", "snapshot"}),
+    ("install",): frozenset({"if_due", "keep", "snapshot"}),
+    ("uninstall",): frozenset(
+        {"if_due", "time", "keep", "destination", "dry_run", "snapshot"}
+    ),
+    ("verify",): frozenset({"if_due", "time", "keep", "dry_run", "repo"}),
 }
 #: Options whose presence changes the row rather than being accepted within it.
 ROW_SELECTORS: "dict[tuple[str, ...], frozenset[str]]" = {

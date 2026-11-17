@@ -22,7 +22,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import live_pid_guard as lpg  # noqa: E402 - import follows the sys.path bootstrap above
+import live_pid_guard as lpg
 
 #: A child that records its own pid in the file the named variable points at, then sleeps well
 #: past every deadline here, so one found gone was killed, not finished.

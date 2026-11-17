@@ -91,6 +91,7 @@ problem after the first run. Then:
 python git_workspace_backup/git_workspace_backup.py --mode run --dry-run --repo ~/your-repo
 python git_workspace_backup/git_workspace_backup.py --mode install --repo ~/your-repo
 python git_workspace_backup/git_workspace_backup.py --mode status --repo ~/your-repo
+python git_workspace_backup/git_workspace_backup.py --mode verify --snapshot "$SNAPSHOT" --destination "$(dirname -- "$SNAPSHOT")"
 ```
 
 The dry run prints the plan and writes nothing. Install writes a per-user launchd agent and
@@ -235,9 +236,14 @@ step. [`git_workspace_backup/samples/README.md`](git_workspace_backup/samples/RE
 one from the sample manifest without touching your machine. On a second machine, its note names
 the Claude files the archive holds, which describe the first machine's setup.
 
-Nothing authenticates `RESTORE.md`. It is read back from the destination, and anyone who can
-write there can rewrite it, together with the bundles beside it. Read every `sh` block before you
-paste it into a shell.
+`RESTORE.md` cannot vouch for itself: it is read back from the destination, and anyone who can
+write there can rewrite it, together with the bundles beside it. So before a restore, run
+`--mode verify` (the last command above, with `SNAPSHOT` set to the snapshot folder) on the
+machine that made the snapshot. It prints `verified:` and exits 0 only when the manifest hashes
+to what that machine's ledger recorded and every file, `RESTORE.md` included, matches the
+manifest, with nothing unlisted beside them. On any other machine there is no ledger entry, so
+it can only check the folder against its own manifest and never prints `verified:`. Either way,
+read every `sh` block before you paste it into a shell.
 
 ### Known limits
 
@@ -263,10 +269,13 @@ python git_workspace_backup/test_git_workspace_backup.py
 python atomic_write/test_atomic_write.py
 python bounded_run/test_bounded_run.py
 python help_formatter/test_help_formatter.py
+python launchd_agent/test_launchd_agent.py
 python live_pid_guard/test_live_pid_guard.py
 python pyproject_config/test_pyproject_config.py
 python os_schedule_gen/test_os_schedule_gen.py
+python run_lock/test_run_lock.py
 python stdio_utf8/test_stdio_utf8.py
+python suite_select/test_suite_select.py
 ```
 
 Two tests run the real `osascript` on temporary files; `WORKSPACE_BACKUP_OFFLINE=1` skips them.

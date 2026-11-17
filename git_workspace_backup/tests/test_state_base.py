@@ -22,7 +22,7 @@ from unittest import mock
 import _cli_case as cc
 import _fixtures as fx
 
-import backup_launchd
+import launchd_agent
 import backup_preflight
 import backup_ledger
 import os_schedule_gen
@@ -47,7 +47,7 @@ class StateBaseTests(cc.CliCase):
         self.base = self.tree.home / wb.STATE_BASE_NAME
 
     def install(self, *extra: str, host: "wb.Host | None" = None) -> int:
-        self.launchctl.prints = [backup_launchd.PRINT_ABSENT_RC, 0]
+        self.launchctl.prints = [launchd_agent.PRINT_ABSENT_RC, 0]
         return self.main("--mode", "install", *extra, host=host)
 
     def test_a_run_makes_the_base_and_everything_beneath_it_owner_only(self) -> None:
@@ -77,7 +77,7 @@ class StateBaseTests(cc.CliCase):
             with self.subTest(argv=argv):
                 self.base.mkdir(exist_ok=True)
                 self.base.chmod(0o755)
-                self.launchctl.prints = [backup_launchd.PRINT_ABSENT_RC, 0]
+                self.launchctl.prints = [launchd_agent.PRINT_ABSENT_RC, 0]
                 self.assertEqual(self.main(*argv), 0, self.err.getvalue())
                 self.assertEqual(_mode(self.base), _PRIVATE_DIR)
 

@@ -77,6 +77,11 @@ _PYPROJECT_NAME = "pyproject.toml"
 # The top-level table every per-tool table nests under: [tool.<name>].
 _TOOL_KEY = "tool"
 
+# Everything ``Path.resolve`` raises for a path it cannot follow: ``ValueError`` for an
+# embedded NUL (or a lone surrogate), ``OSError`` for a refusal from the filesystem, and
+# ``RuntimeError`` for a symlink loop on interpreters before 3.13.
+_UNRESOLVABLE = (ValueError, OSError, RuntimeError)
+
 # Filesystem seams. Injected rather than called directly so a consumer's tests can
 # reach the malformed/unreadable branches without writing a real file: inject the
 # seam, never let a black-box test touch the host.
@@ -113,8 +118,10 @@ def default_read_text(path: Path) -> str:
 class ConfigError(Exception):
     """Exit-2-class failure: a tool's pyproject config could not be trusted.
 
-    Raised for a pyproject that cannot be read or parsed, and for a key whose
-    value is not a list of strings. Never raised for *absent* config, which is a
+    Raised for a pyproject that cannot be read or parsed (nested too deeply
+    included), for a key whose value is not a list of strings or holds an entry
+    that cannot be a path, and for a target path the walk cannot resolve. It is the
+    ONLY exception the readers let a pyproject's content raise. Never raised for *absent* config, which is a
     legitimate empty result: the distinction between "no config" and "config I
     cannot interpret" is the whole point of the type.
     """
@@ -163,7 +170,48 @@ def _resolved_list(
     if raw is None:
         return []
     entries = _require_string_list(raw, key=key, pyproject=pyproject, table=table)
-    return [(base / entry).resolve() for entry in entries]
+    resolved: list[Path] = []
+    try:
+        for entry in entries:
+            resolved.append((base / entry).resolve())
+    except _UNRESOLVABLE as exc:
+        # The entry is named by its 1-based position and never quoted: what makes it
+        # unusable is typically a control character, and consumers print this line on
+        # a terminal. The entries before it resolved, so their count places it.
+        raise ConfigError(
+            f"[tool.{table}] {key} in {pyproject} holds an entry (number "
+            f"{len(resolved) + 1}) that cannot be resolved as a path: {_path_fault(exc)}"
+        ) from exc
+    return resolved
+
+
+def _path_fault(exc: Exception) -> str:
+    """Why ``Path.resolve`` refused a path, without quoting the path or the error's text.
+
+    A ``ValueError`` is the path's own content -- an embedded NUL, or a lone surrogate
+    that cannot be encoded for the filesystem -- and says so in words. Anything else is
+    named by its type alone, because its text carries the absolute path (the symlink-loop
+    ``RuntimeError`` of interpreters before 3.13 quotes it).
+    """
+    if isinstance(exc, ValueError):
+        return "it holds a character no file name can carry"
+    return type(exc).__name__
+
+
+def _resolved_target(path: Path) -> Path:
+    """*path* resolved, or :class:`ConfigError` when it cannot be.
+
+    The walk starts from the caller's target, so a target that cannot be resolved has no
+    nearest pyproject to find. That is not "no config": nothing can say which file would
+    have answered, so it stops the gate like any other config that cannot be trusted.
+    """
+    try:
+        return path.resolve()
+    except _UNRESOLVABLE as exc:
+        raise ConfigError(
+            f"cannot resolve the path to search for a {_PYPROJECT_NAME}: "
+            f"{_path_fault(exc)}"
+        ) from exc
 
 
 def _shown(pyproject: Path, start: Path, *, is_file: IsFileFn) -> Path:
@@ -187,13 +235,22 @@ def _parse(pyproject: Path, read_text: ReadTextFn, *, shown: Path) -> object:
 
     ``UnicodeDecodeError`` is caught alongside the TOML and OS errors because a
     non-UTF-8 pyproject is unreadable config, not absent config, and must land on
-    the same stop-the-gate path rather than escaping as a bare exception. The
+    the same stop-the-gate path rather than escaping as a bare exception. So must a
+    document nested too deeply to parse, which arrives as ``RecursionError``. The
     message names the file as *shown* (see :func:`_shown`), never its absolute path.
     """
     try:
         return tomllib.loads(read_text(pyproject))
     except (tomllib.TOMLDecodeError, UnicodeDecodeError, OSError) as exc:
         raise ConfigError(f"cannot read or parse {shown}: {_reason(exc)}") from exc
+    except RecursionError as exc:
+        # Caught by name: the parser is recursive, and a document nested past the
+        # interpreter's depth limit raises this INSTEAD of its own decode error. Its
+        # text ("maximum recursion depth exceeded") describes the interpreter, not the
+        # file, so the message states the cause in the file's terms.
+        raise ConfigError(
+            f"cannot read or parse {shown}: it nests deeper than the parser can follow"
+        ) from exc
 
 
 def _reason(exc: Exception) -> str:
@@ -214,8 +271,11 @@ def nearest(start: Path, *, is_file: IsFileFn) -> Path | None:
     would answer before, or without, reading it. :func:`chain` needs exactly that:
     telling one source from another by identity is what keeps a declaration from being
     read, and judged stale, once per subject that happens to sit under it.
+
+    A *start* that cannot be resolved (it holds a NUL, say) raises
+    :class:`ConfigError`: see :func:`_resolved_target`.
     """
-    here = start.resolve()
+    here = _resolved_target(start)
     for candidate in (here, *here.parents):
         pyproject = candidate / _PYPROJECT_NAME
         if is_file(pyproject):
@@ -235,10 +295,11 @@ def chain(start: Path, *, stop: Path, is_file: IsFileFn) -> tuple[Path, ...]:
     above the checkout change a verdict, which is the host-independence rule governing
     every other path this library resolves. A *start* outside *stop* yields ``()``: what
     to do about a subject reached from outside the bound is the caller's policy, not a
-    default this library should pick on its behalf.
+    default this library should pick on its behalf. A *start* or *stop* that cannot be
+    resolved at all raises :class:`ConfigError`, as it does from :func:`nearest`.
     """
-    here = start.resolve()
-    ceiling = stop.resolve()
+    here = _resolved_target(start)
+    ceiling = _resolved_target(stop)
     if here != ceiling and ceiling not in here.parents:
         return ()
     # Cut the walk to the bound before testing anything, rather than breaking out of it
@@ -253,6 +314,7 @@ def chain(start: Path, *, stop: Path, is_file: IsFileFn) -> tuple[Path, ...]:
     )
 
 
+# fuzz-target
 def read_tool_table(
     start: Path, *, table: str, is_file: IsFileFn, read_text: ReadTextFn
 ) -> tuple[Path, dict[str, object]] | None:
@@ -273,7 +335,8 @@ def read_tool_table(
     Values come back exactly as ``tomllib`` parsed them. Validating their shape is
     the caller's job, because only it knows what shape its own keys should have,
     which is the same boundary :func:`read_path_lists` draws by owning path lists
-    and nothing else. A malformed or unreadable file raises :class:`ConfigError`.
+    and nothing else. A malformed or unreadable file raises :class:`ConfigError`,
+    and so does one nested too deeply to parse, or a *start* that cannot be resolved.
     """
     pyproject = nearest(start, is_file=is_file)
     if pyproject is None:
@@ -283,6 +346,7 @@ def read_tool_table(
     return pyproject, _tool_table(data, table)
 
 
+# fuzz-target
 def read_path_lists(
     start: Path,
     *,
@@ -300,8 +364,9 @@ def read_path_lists(
 
     Every requested key is present in the result, mapped to ``[]`` when the
     pyproject, the table, or the key is absent, so a caller can index the mapping
-    directly instead of guarding each lookup. A malformed/unreadable file, or a
-    value that is not a list of strings, raises :class:`ConfigError`.
+    directly instead of guarding each lookup. A malformed/unreadable file, a value
+    that is not a list of strings, or an entry that cannot be resolved as a path
+    (it holds a NUL, say) raises :class:`ConfigError`.
 
     Built on :func:`read_tool_table` rather than repeating its walk, so the two
     entry points cannot drift over where config comes from: the property that

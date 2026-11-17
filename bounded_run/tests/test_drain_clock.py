@@ -72,7 +72,7 @@ class _SlicedProc:
         self.timeouts: list[float | None] = []
         self.inputs: list[str | None] = []
 
-    def communicate(  # noqa: A002 - `input` mirrors Popen's parameter name
+    def communicate(
         self, input: str | None = None, timeout: float | None = None
     ) -> tuple[str, str]:
         self.timeouts.append(timeout)

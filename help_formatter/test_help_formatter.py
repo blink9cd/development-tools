@@ -29,7 +29,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import help_formatter  # noqa: E402 - import follows the sys.path bootstrap above
+import help_formatter
 
 _DEFAULT_NOTE = " (default: %(default)s)"
 

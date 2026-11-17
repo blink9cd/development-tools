@@ -42,8 +42,6 @@ FIXTURE_UID = 501
 FIXTURE_PYTHON = "/opt/fixture-python"
 #: What the injected PATH lookup reports; a run itself executes whichever git is on PATH.
 FIXTURE_GIT = "/opt/fixture-bin/git"
-#: The fake waiter's deadline, in ticks of its clock: each read of the clock is one tick.
-WAIT_DEADLINE_S = 3.0
 #: What a fake memory_snapshot prints when told to fail.
 MEMORY_FAILURE = "fixture memory failure"
 
@@ -136,11 +134,11 @@ class CliCase(unittest.TestCase):
     def host(self, runner: "fx.FakeRunner | None" = None) -> wb.Host:
         """A Host of fakes over the fixture tree; *runner* becomes ``self.runner``."""
         self.runner = self.fake_runner() if runner is None else runner
+        # Each read of the clock is one second later and a sleep returns at once, so a wait
+        # that never settles ends after launchd_agent's deadline in reads, not in time.
         ticks = itertools.count()
         waiter = backup_launchd.Waiter(
-            clock=lambda: float(next(ticks)),
-            sleep=lambda seconds: None,
-            deadline_s=WAIT_DEADLINE_S,
+            clock=lambda: float(next(ticks)), sleep=lambda seconds: None
         )
         return wb.Host(
             home=self.tree.home,

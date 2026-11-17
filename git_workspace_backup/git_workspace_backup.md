@@ -21,9 +21,10 @@ travels as bundles. Three routes were rejected:
   the gitignored or Claude-home files.
 
 It needs macOS, Python 3.12 or later, and git 2.36 or later on `PATH`. It drives `/bin/launchctl`
-for the agent and `/usr/bin/osascript` for notifications and upload state, each by that absolute
-path: the agent's `PATH` puts git's directory first, which a Homebrew install makes writable by
-its user. A restore also needs `unzip`.
+for the agent, through the shared `launchd_agent` library, and `/usr/bin/osascript` for
+notifications and upload state, each by that absolute path: the agent's `PATH` puts git's
+directory first, which a Homebrew install makes writable by its user. A restore also needs
+`unzip`.
 
 ## What a snapshot holds
 
@@ -110,8 +111,10 @@ Run, install and status, dry runs included, refuse with exit 2 a `$HOME/.workspa
 is not a directory (a symlink in its place included), is not owned by the effective user, or
 that its group or anyone else can write. Run and install check and change it through one
 descriptor, opened without following a symlink, so a swap after the check cannot redirect the
-change; one they cannot open (mode `000`, say) is refused rather than repaired. The run lock is opened, and probed, never through a
-symlink; the identity file, the ledger and `last.json` are read only as regular files, never
+change; one they cannot open (mode `000`, say) is refused rather than repaired. The run lock is
+the shared `../run_lock` library's, taken and probed with `private=True`: it is opened,
+and probed, never through a symlink, and a run creates it `0600`, in a `0700` directory when it
+has to make one; the identity file, the ledger and `last.json` are read only as regular files, never
 through a symlink, and the ledger and `last.json` within `STATE_READ_LIMIT` in
 `src/backup_ledger.py`. State lives under
 `$HOME/.workspace_backup/state` (`STATE_DIR_NAME` in `src/backup_ledger.py`), in a directory named
@@ -151,14 +154,19 @@ From this folder, with `~/your-repo` standing for the repository to back up:
 python3.12 git_workspace_backup.py --mode run --dry-run --repo ~/your-repo
 python3.12 git_workspace_backup.py --mode install --repo ~/your-repo
 python3.12 git_workspace_backup.py --mode status --repo ~/your-repo
+python3.12 git_workspace_backup.py --mode verify --destination "$DESTINATION" --snapshot "$SNAPSHOT"
 ```
 
 The dry run prints the plan. Install loads the daily agent, and loading it starts a run unless
-today already has a complete snapshot. Run status once that run has finished.
+today already has a complete snapshot. Run status once that run has finished. Verify checks the
+snapshot folder `SNAPSHOT` names, in the destination `DESTINATION` names, the one your
+repository's configuration sets; see [Verifying a snapshot](#verifying-a-snapshot).
 
 With `--repo`, the script can sit anywhere, and from another folder only its own path changes.
-Without it, every mode backs up the checkout this script sits in, wherever it is run from;
-`/path/to` stands for wherever the script is:
+Without it, every mode but `verify` backs up the checkout this script sits in, wherever it is
+run from. `verify` takes no `--repo`: without `--destination` it reads that checkout only for
+the configured destination, which this repository does not hold, so here it is given
+`--destination`. `/path/to` stands for wherever the script is:
 
 ```bash
 python3.12 /path/to/git_workspace_backup.py --mode install
@@ -184,13 +192,14 @@ logged out, since the agent is a per-user LaunchAgent.
 
 | Argument | Required | Default | Description |
 | --- | --- | --- | --- |
-| `--mode MODE` | yes | n/a | `run` takes one snapshot; `install` and `uninstall` add or remove the daily LaunchAgent; `status` judges the destination's health. |
+| `--mode MODE` | yes | n/a | `run` takes one snapshot; `install` and `uninstall` add or remove the daily LaunchAgent; `status` judges the destination's health; `verify` checks one snapshot folder against its manifest and this machine's ledger. |
 | `--if-due` | no | off | `run` only, and not with `--dry-run`: only record a skip when the ledger already holds a complete snapshot taken today. What the agent runs. |
 | `--time HH:MM` | no | `DEFAULT_TIME` in `src/backup_launchd.py`, which `--help` prints | `install` only: the daily run time, on a 24-hour clock. |
 | `--keep N` | no | unset: the configured `keep` | `run` and `status`: complete snapshots to retain, in place of the configured `keep`; at least 1. |
-| `--destination DIR` | no | unset: the configured `destination` | `run`, `status` and `install`: the destination directory, absolute or starting with `~/`, resolved as the configured one is; a relative path is refused. `install` pins the destination, this one or the configured one, into the agent. |
+| `--destination DIR` | no | unset: the configured `destination` | `run`, `status`, `install` and `verify`: the destination directory, absolute or starting with `~/`, resolved as the configured one is; a relative path is refused. `install` pins the destination, this one or the configured one, into the agent. |
 | `--dry-run` | no | off | `run` and `install` only: print the plan and write nothing. |
-| `--repo PATH` | no | unset: the checkout this script sits in | every mode: the repository to back up, absolute or starting with `~/`, and an existing directory; a linked worktree means its primary checkout. A path in no git checkout is refused, and so is a submodule or a repository made with `--separate-git-dir`, whose work tree is not its git directory's parent. `install` bakes the resolved primary checkout into the agent. |
+| `--repo PATH` | no | unset: the checkout this script sits in | every mode but `verify`: the repository to back up, absolute or starting with `~/`, and an existing directory; a linked worktree means its primary checkout. A path in no git checkout is refused, and so is a submodule or a repository made with `--separate-git-dir`, whose work tree is not its git directory's parent. `install` bakes the resolved primary checkout into the agent. |
+| `--snapshot DIR` | `verify` only, and required there | unset | the snapshot folder to check, absolute or starting with `~/`; it must sit directly in the destination, `--destination`'s or the configured one. |
 
 ### Which modes take which options
 
@@ -200,20 +209,23 @@ reading the configured `keep`. A value equal to the option's default counts as n
 given. A dry run of `run` has its own row, because the plan reads no `--if-due`: on a day
 already covered it would still say it would write a snapshot.
 
-| Mode | `--if-due` | `--time` | `--keep` | `--destination` | `--dry-run` | `--repo` |
-| --- | --- | --- | --- | --- | --- | --- |
-| `run` | yes | refused | yes | yes | yes, and it selects the `run --dry-run` row | yes |
-| `run --dry-run` | refused | refused | yes | yes | yes | yes |
-| `install` | refused | yes | refused | yes, pinned into the agent | yes | yes, baked into the agent |
-| `uninstall` | refused | refused | refused | refused | refused | yes, compared with the repository the removed agent was backing up; the one agent is removed either way |
-| `status` | refused | refused | yes | yes | refused | yes |
+| Mode | `--if-due` | `--time` | `--keep` | `--destination` | `--dry-run` | `--repo` | `--snapshot` |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `run` | yes | refused | yes | yes | yes, and it selects the `run --dry-run` row | yes | refused |
+| `run --dry-run` | refused | refused | yes | yes | yes | yes | refused |
+| `install` | refused | yes | refused | yes, pinned into the agent | yes | yes, baked into the agent | refused |
+| `uninstall` | refused | refused | refused | refused | refused | yes, compared with the repository the removed agent was backing up; the one agent is removed either way | refused |
+| `status` | refused | refused | yes | yes | refused | yes | refused |
+| `verify` | refused | refused | refused | yes, and then the checkout and configuration are not read | refused | refused | yes, required |
 
 This table restates `CONSUMED_OPTIONS` in `git_workspace_backup.py`, and
 `tests/test_companion_doc.py` fails when the two disagree. Install takes no `--keep` because
 the agent reads the configuration on every run; `--repo` only says where that configuration
 is. It takes `--destination` because it pins the destination either way, so a later edit to
 the configuration cannot move where the agent writes. Uninstall reads neither the checkout nor
-the configuration, so it checks only that a `--repo` it is given is absolute.
+the configuration, so it checks only that a `--repo` it is given is absolute. Verify reads the
+configuration only for the destination, from the checkout this script sits in, and given
+`--destination` reads neither, so a machine without the checkout can still run it.
 
 ### Install and uninstall
 
@@ -225,21 +237,25 @@ backup run holding the run lock. Given
 `--repo` names. The bootout below would kill that run,
 and its git children, which run in sessions of their own, could go on writing into staging after
 the lock is freed. The lock is probed without waiting and without creating anything, so a dry run
-refuses the same way and still writes nothing. It then:
+refuses the same way and still writes nothing. It then creates the log directory, owner-only,
+and hands the rest to the shared `launchd_agent` library
+(`../launchd_agent/launchd_agent.md`), which:
 
-1. creates the log directory and writes the agent's plist, atomically, under
+1. writes the agent's plist, atomically, under
    `$HOME/Library/LaunchAgents` (`launchd_plist_path` in
    `../os_schedule_gen/os_schedule_gen.py`), named for `LABEL` in
-   `src/backup_launchd.py`;
+   `src/backup_launchd.py`, before anything is unloaded;
 2. boots out any loaded copy, and polls until launchd reports the agent absent;
 3. bootstraps the plist, and polls until launchd reports the agent loaded, whatever bootstrap
    exited: one racing the old copy's teardown can fail while launchd goes on to load the agent.
 
-`launchctl print` has three answers: exit 0 is loaded, `PRINT_ABSENT_RC` is absent, and anything
-else is unknown, a timeout or a missing `launchctl` included. An unknown answer exits 2
-immediately rather than being polled, and a wait that passes its deadline exits 2. Each such
-failure says that the plist is written and that an agent loaded before the install may already be
-unloaded, and that re-running install recovers. `--dry-run`
+Every call is the absolute `/bin/launchctl`, under the library's bound on each call, and each wait
+ends at the library's deadline; their values are in `launchd_agent.md`, not restated here.
+`launchctl print` has three answers: exit 0 is loaded, the library's `PRINT_ABSENT_RC` is
+absent, and anything else is unknown, a timeout or a `launchctl` that cannot run included. An
+unknown answer ends the wait at once rather than being polled. Any such failure, a wait that passes its deadline included, is one
+`ERROR:` line, exit 2: what launchd answered, then that the plist is written, that an agent loaded
+before the install may already be unloaded, and that re-running install recovers. `--dry-run`
 prints the plist and the commands. It writes nothing and runs no `launchctl` verb, though it still
 asks git, read-only, for the checkout the agent would run from.
 
@@ -266,9 +282,10 @@ it cannot open at all (the tool's directory is a file, or the lock is unreadable
 symlink loop) is one no run can hold either, since a run opens it read-write: uninstall prints
 one warning naming the lock and goes ahead, so a broken state directory never makes the agent
 impossible to remove. Install still refuses such a lock, because every run of the agent it would
-install fails at it. Otherwise uninstall boots the agent out, polls until launchd reports it
-absent, and only then removes the plist. While the agent is still loaded, or its state is unknown, the plist is kept
-for a retry and the exit is 2. Every snapshot and all recorded state are kept. Uninstall reads
+install fails at it. Otherwise uninstall, through `launchd_agent`, boots the agent out, polls
+until launchd reports it absent, and only then removes the plist. While the agent is still
+loaded, or its state is unknown, the plist is kept for a retry: the one `ERROR:` line names what
+launchd answered and says the plist is kept, and the exit is 2. Every snapshot and all recorded state are kept. Uninstall reads
 neither the checkout nor the configuration, so a broken configuration cannot make the agent
 impossible to remove. What it does read is the removed agent's own plist, before anything else
 runs, as a regular file within a bound and never through a symlink: once the agent is gone it
@@ -278,15 +295,15 @@ removed all the same. A plist it cannot read that from is a warning, and removal
 
 ## Exit codes
 
-| Code | `run` | `status` | `install` and `uninstall` |
-| --- | --- | --- | --- |
-| `0` | a complete, verified, promoted snapshot; an `--if-due` run on a day already covered; a printed plan | healthy, perhaps with notes | launchd confirmed the agent loaded, or absent; a printed install plan |
-| `1` | an incomplete snapshot; a run that promoted nothing, or could not confirm or record what it did; another run holding the lock; a plan whose memory repositories cannot be listed | at least one problem, listed | never |
-| `2` | could not run, below | could not judge, below | a refusal before anything was written, a plist that could not be written or removed, or a launchd step that failed, answered unknown or did not settle |
+| Code | `run` | `status` | `install` and `uninstall` | `verify` |
+| --- | --- | --- | --- | --- |
+| `0` | a complete, verified, promoted snapshot; an `--if-due` run on a day already covered; a printed plan | healthy, perhaps with notes | launchd confirmed the agent loaded, or absent; a printed install plan | the manifest matches the ledger and every listed file matches the manifest; `verified: <name> (<n> files)`, followed by a note when the run recorded the snapshot incomplete |
+| `1` | an incomplete snapshot; a run that promoted nothing, or could not confirm or record what it did; another run holding the lock; a plan whose memory repositories cannot be listed | at least one problem, listed | never | a changed, missing or non-regular listed file, an unlisted file or folder, a manifest the ledger does not match, or no ledger entry once every listed file was judged |
+| `2` | could not run, below | could not judge, below | a refusal before anything was written, a plist that could not be written or removed, or a launchd step that failed, answered unknown or did not settle | could not judge, below |
 
 Every mode exits 2 for bad options, an option the mode does not use included, and off macOS.
-Every mode but `uninstall` also exits 2 outside a git checkout and for a missing or invalid
-configuration.
+Every mode but `uninstall`, and `verify` given `--destination`, also exits 2 outside a git
+checkout and for a missing or invalid configuration: those two read neither.
 
 - `run`, `status` and `install`, dry runs included, also exit 2 for a
   `$HOME/.workspace_backup` that is not a directory, not the effective user's, or writable by
@@ -306,6 +323,14 @@ configuration.
   absolute or holds a control character (Unicode category `Cc`: C0, DEL and C1), and a git directory whose name holds the `PATH`
   separator `:`.
 - `uninstall` also exits 2 for a relative `--repo`.
+- `verify` also exits 2 without `--snapshot` or for a relative one, for an unsafe
+  `$HOME/.workspace_backup`, and when it cannot judge the folder: a name that is not a snapshot
+  name, a folder not directly in the destination, missing, not a directory or a symlink, a
+  manifest that cannot be read in time as a regular file or is not this tool's, a ledger that is
+  not this tool's or cannot be read, and a listed file that cannot be read, stalls (iCloud
+  fetching an offloaded file) or is offloaded, unless a definite problem already makes the
+  answer 1. That holds with no ledger entry too: an unjudged file leaves the answer open, so
+  it exits 2, not 1.
 - `install`, dry run included, and `uninstall` also exit 2 while a backup run holds the run lock.
   `install` also exits 2 when an existing run lock cannot be opened to check; `uninstall` warns
   and goes ahead.
@@ -457,9 +482,12 @@ round-trip test executes the blocks the renderer writes.
 Nothing authenticates the copy you read. It is read back from the destination, and whatever
 can write the bundles there can rewrite it too. So read every `sh` block before you paste or
 run it, and run none you do not
-understand. A mode that verifies a snapshot against what the tool recorded is planned, and
-not yet built.
+understand. `--mode verify` checks the copy against what the tool recorded, which only the
+machine that made the snapshot holds; see [Verifying a snapshot](#verifying-a-snapshot).
 
+0. On the machine that made the snapshot, run verify first, and restore only after it prints
+   `verified:` and exits 0. Elsewhere it can only check the folder against its own manifest,
+   which proves nothing about who wrote both.
 1. Set `SNAPSHOT` to the snapshot folder and `RESTORE_ROOT` to the directory to restore into,
    both as absolute paths; the document's first lines show how. Every `sh` block begins by
    refusing a relative value of either, which would name somewhere beneath whatever directory
@@ -532,6 +560,47 @@ normalization form, since two spellings it reads as one folder restore into one.
 component; a head that is not a full object id; a machine that is not a valid label; or a
 re-arm command that could end or hide a line in its fence.
 
+### Verifying a snapshot
+
+```bash
+python3.12 git_workspace_backup.py --mode verify --destination "$DESTINATION" --snapshot "$SNAPSHOT"
+```
+
+`SNAPSHOT` is the snapshot folder's path, and `DESTINATION` the destination's, each absolute or
+starting with `~/`. `--mode verify`
+checks one folder directly in the destination, by two proofs. The manifest must hash to the
+sha256 this machine's ledger recorded for the folder's name, under the destination's state
+key, and every file the manifest lists, `RESTORE.md` included, must match
+its sha256 and size. Anything else in the folder fails it: every file, symlink or other entry
+the manifest does not list, and every folder that holds no listed file, which is named once,
+with a trailing `/`, and not looked inside. The one exception is `.DS_Store`, which Finder
+writes into any folder it shows: that is noted and passes. Every problem line names its file,
+with each character a terminal would act on (a control character, a direction mark) printed as
+an escape such as `\x1b`, so a name cannot erase a line or print one of its own.
+
+A folder the ledger has no promoted entry for is checked against its own manifest all the
+same, but never exits 0 and never prints `verified`: the snapshot was taken on another machine, the
+machine was restored without its state, or the snapshot was pruned. Nothing then vouches for
+the manifest, since whatever could rewrite a file could rewrite the manifest to match, so the
+line says the folder is consistent with its own manifest and that the manifest is NOT
+authenticated. That is exit 1 once every listed file was judged, and exit 2 when one could
+not be.
+
+A snapshot whose manifest records it incomplete still verifies, since the folder is exactly
+what its run recorded; a note under the `verified:` line says how many items that run failed.
+
+Every read is beneath the destination, as a regular file, and never through a symlink: a
+symlinked folder is not judged, and a listed file that is a symlink fails. The destination is
+usually iCloud Drive. A file iCloud evicted is dataless, which macOS flags on the file, and is
+reported offloaded without being read, since reading it would wait while it is fetched. A file
+whose size is not its entry's is reported changed without being read, so a file swapped for a
+far larger one is never hashed to its end. Every other file is hashed on a watchdog that gives up when no data arrives within `STALL_TIMEOUT_S`
+in `src/backup_snapshot_verify.py`; a read that keeps returning data is never cut off. The
+folder listing that finds unlisted files has no such bound, since a listing fetches no file
+data. A file that is offloaded, stalls, or that older iCloud Drive left as a `.<name>.icloud`
+placeholder is not judged: download it and run verify again. A placeholder stands in for its
+file only while the file is absent; beside the file itself it is unlisted.
+
 ## Module map
 
 The modules live in `src/`, private to this tool: nothing outside this folder imports them.
@@ -539,7 +608,7 @@ The modules live in `src/`, private to this tool: nothing outside this folder im
 | Module | Responsibility |
 | --- | --- |
 | `src/backup_proc.py` | the one bounded subprocess seam, and every command's timeout |
-| `src/backup_fs.py` | atomic writes, hashing, bounded reads, the run lock and its probe, the regular-file reader beneath a root |
+| `src/backup_fs.py` | atomic writes, hashing (a stall-bounded hasher included), bounded reads, the regular-file reader beneath a root |
 | `src/backup_model.py` | the frozen records and their constants |
 | `src/backup_machine.py` | this machine's identity: the label a host name gives, and the file that keeps it |
 | `src/backup_json.py` | strict JSON readers, the record envelope, the safe-name rule |
@@ -560,16 +629,27 @@ The modules live in `src/`, private to this tool: nothing outside this folder im
 | `src/backup_rearm.py` | the re-arm step: configured commands or the derived install line, and the rule each command meets |
 | `src/backup_restore_stash.py` | the restore block's commands storing each stash entry back |
 | `src/backup_notify.py` | the `osascript` notification |
-| `src/backup_run.py` | the run pipeline |
+| `src/backup_run.py` | the run pipeline, and taking the run lock (`../run_lock`, `private=True`) |
 | `src/backup_staging.py` | making the run's staging folder fresh |
 | `src/backup_icloud.py` | per-file upload state through Foundation |
 | `src/backup_status.py` | status facts and the verdict |
-| `src/backup_launchd.py` | install, uninstall and the agent's state |
-| `src/backup_preflight.py` | the CLI's refusals about the tool's own directory: a run in progress, and a directory that is not this user's alone, which run and install then make owner-only |
+| `src/backup_launchd.py` | install, uninstall and the agent's state, each through `../launchd_agent` |
+| `src/backup_preflight.py` | the CLI's refusals about the tool's own directory: a run in progress (the run lock probed through `../run_lock`, `private=True`), and a directory that is not this user's alone, which run and install then make owner-only |
 | `src/backup_restore_checks.py` | the refusals keeping `RESTORE.md`'s manifest values from changing what runs or where it writes |
 | `src/backup_agent_args.py` | what an installed agent's plist says it runs, read back for uninstall's report |
+| `src/backup_cli_options.py` | which given options a mode's row does not consume, read from the parser |
+| `src/backup_snapshot_verify.py` | `--mode verify`: a promoted snapshot folder against its manifest and the ledger |
 
 `tests/test_companion_doc.py` fails when this map and `src/` disagree.
+
+## Tests
+
+`test_git_workspace_backup.py` runs the grouped suites under `tests/`. A bare run of it runs
+everything in one process. It declares `SPLIT_SUITE_BY_FILE`, so a runner that splits suites
+may instead run each grouped file as its own task, and the aggregator's own guards as one more,
+then combine their coverage. Its guards stay whole in their task: each grouped file's
+test-count floor, and its `load_tests` wiring, which they check with the selection cleared
+([`suite_select`](../suite_select/suite_select.md)).
 
 ## Known limits
 

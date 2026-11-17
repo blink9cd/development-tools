@@ -14,6 +14,7 @@ from pathlib import Path
 import _cli_case as cc
 
 import backup_launchd
+import launchd_agent
 import git_workspace_backup as wb
 from backup_agent_args import installed_agent_from
 from backup_config import icloud_drive_root
@@ -45,7 +46,7 @@ class StatusCliTests(cc.CliCase):
         self.assertEqual(self.main("--mode", "run"), 0)
         service = f"gui/{cc.FIXTURE_UID}/{backup_launchd.LABEL}"
         cases = (
-            (backup_launchd.PRINT_ABSENT_RC, 2, "not installed"),
+            (launchd_agent.PRINT_ABSENT_RC, 2, "not installed"),
             (UNKNOWN_PRINT, 1, "could not be read"),
         )
         for code, expected, fragment in cases:
@@ -194,7 +195,7 @@ class PinnedDestinationTests(cc.CliCase):
         # A hand-edited plist is the user's own, but what a terminal shows must still be
         # what the plist holds: DEL and a bidi override print escaped, never raw.
         self.assertEqual(self.main("--mode", "run"), 0)
-        for hidden in ("\x7f", "‮"):
+        for hidden in ("\x7f", "\u202e"):
             with self.subTest(hidden=repr(hidden)):
                 self.err.seek(0)
                 self.err.truncate()

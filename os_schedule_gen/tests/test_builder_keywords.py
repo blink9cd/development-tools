@@ -98,7 +98,7 @@ class TaskXmlKeywordTests(unittest.TestCase):
 
     def test_a_task_name_outside_the_safe_shape_is_refused(self) -> None:
         # A leading backslash, then backslash-separated segments each in the job-name
-        # set: a ".." segment, markup or an empty segment is not a task path.
+        # set: a ".." segment, markup, or an empty segment is not a task path.
         for name in (
             "",
             "\\",

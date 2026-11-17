@@ -90,7 +90,7 @@ name, so that boundary is the contract, not an apology for it.
 | `chain(start, *, stop, is_file)` | Every `pyproject.toml` from `start` up to and including `stop`, nearest first, for config that accumulates down a tree rather than being answered by one file. A `start` outside `stop` yields `()`: the bound keeps anything above the checkout from changing a verdict, and what to do about a subject reached from outside it is the caller's policy |
 | `is_under(path, roots)` | Is `path` one of `roots`, or beneath one? The subtree rule behind every exclude list |
 | `dead_paths(configured, prospective, *, exists)` | Split entries that no longer resolve into `(gating, absent)` |
-| `ConfigError` | Exit-2-class failure: config that could not be trusted. Never raised for merely *absent* config. Its message names the `pyproject.toml` relative to the directory the walk starts in (the target `start`, or a file target's own directory), never absolutely, because consumers print it on stderr |
+| `ConfigError` | Exit-2-class failure: config that could not be trusted (see *The error contract* below). Never raised for merely *absent* config. Its message names the `pyproject.toml` relative to the directory the walk starts in (the target `start`, or a file target's own directory), never absolutely, because consumers print it on stderr |
 | `IsFileFn` · `ReadTextFn` · `ExistsFn` | The injected filesystem seam types |
 | `default_is_file` · `default_is_dir` · `default_read_text` | The real implementations of those seams |
 
@@ -99,6 +99,42 @@ than in each consumer: falling back to the platform default makes a pyproject ho
 a non-ASCII string readable on one machine and a `UnicodeDecodeError` on another.
 Because that error is caught and re-raised as `ConfigError`, the difference would
 surface as a gate that mysteriously exits `2` on one developer's box.
+
+## The error contract
+
+`ConfigError` is the only exception the readers let a pyproject's content raise. A
+consumer builds its exit-`2` line on catching that one type, so any other exception
+leaving this module is a traceback one level up, and an uncaught exception exits `1`,
+which most gates use for "a finding". Each row below is a separate cause, and only the
+first arrives as the parser's own decode error:
+
+| The input | What raises underneath | Outcome |
+| --- | --- | --- |
+| text that is not TOML | `tomllib.TOMLDecodeError` | `ConfigError`, quoting the parser's line and column |
+| bytes that are not UTF-8 | `UnicodeDecodeError` | `ConfigError` |
+| a directory, or a file that cannot be read, at the path | `OSError` | `ConfigError`, quoting the error's own text and never its absolute path |
+| a document nested too deeply to parse (arrays, inline tables, a dotted key) | `RecursionError` | `ConfigError`: "it nests deeper than the parser can follow" |
+| a path-list key that is not a list of strings | none: the validator refuses it | `ConfigError` naming the table, the key, and the file |
+| a path-list entry that cannot be a path (TOML's `\u0000` escape yields a NUL) | `ValueError` from `Path.resolve` | `ConfigError` naming the table, the key, the file, and the entry's position counted from 1, never the entry's value |
+| a target path that cannot be resolved (a NUL in `start`, or in `chain`'s `stop`) | `ValueError` from `Path.resolve` | `ConfigError` from `nearest`, `chain`, and both readers: nothing can say which file would have answered |
+| an entry or a target the filesystem refuses to resolve (a relative target under a vanished working directory, say) | `OSError` from `Path.resolve` | `ConfigError` as in the two rows above, whose message names only the error's type (`FileNotFoundError`), because the error's own text carries the absolute path |
+| an entry or a target inside a symlink loop, on Python before 3.13 | `RuntimeError` from `Path.resolve` | the same: `ConfigError` naming only the error's type |
+
+Two things stay outside it, both on purpose:
+
+- **A wrong-shaped table on the way down is absence, not an error.** A `tool` key that
+  is not a table, or a `[tool]` entry under the consumer's name that is not one, reads
+  as "this pyproject does not configure the tool" and yields an empty table.
+- **`is_under` resolves the path it is handed and converts nothing.** It is a predicate
+  over paths a walk already produced, so whatever `Path.resolve` raises leaves it
+  unchanged. That includes one a real tree can produce: the `RuntimeError` a symlink
+  loop raises on Python before 3.13.
+
+The suite states the contract as a property as well as by example: `read_tool_table`
+and `read_path_lists` each have a property test that accepts only the documented result
+or a `ConfigError`. Their inputs differ. `read_tool_table`'s property feeds arbitrary
+text as the whole document. `read_path_lists`' property feeds arbitrary strings as the
+entries of one path-list key, inside a table that is otherwise well formed.
 
 ## Usage
 
@@ -120,14 +156,15 @@ def read_config(start, *, is_file, read_text) -> Config:
 Keep the seams injected all the way down from the entry point, passing
 `default_is_file` / `default_read_text` in `main()`. That is what lets a consumer's
 own tests drive the unreadable-file and malformed-value branches without writing a
-real file, and it is why this module performs no I/O of its own.
+real file, and it is why this module performs no I/O of its own beyond
+`Path.resolve`.
 
 ## Notes
 
 - **Python 3.11+**, for the stdlib `tomllib`; this project's floor, 3.12, clears
   it.
-- **Pure and stateless.** No I/O of its own, no config of its own, no import-time
-  failure mode.
+- **Pure and stateless.** No I/O of its own beyond `Path.resolve`, no config of its
+  own, no import-time failure mode.
 - **One walk, one parse.** All requested keys are read from the first pyproject
   found, so asking for three keys does not open the file three times.
 

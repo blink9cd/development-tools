@@ -59,17 +59,36 @@ def _shipped_modules(root: Path) -> list[Path]:
     ]
 
 
+#: The pathlib classes with no filesystem access, whose ``.parents`` is lexical only.
+_PURE_PATHS = frozenset({"PurePath", "PurePosixPath", "PureWindowsPath"})
+
+
+def _is_pure_path_call(node: ast.expr) -> bool:
+    """Whether *node* calls a pure path class, bare or attribute-qualified."""
+    if not isinstance(node, ast.Call):
+        return False
+    func = node.func
+    name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
+    return name in _PURE_PATHS
+
+
 def _ancestor_walk_lines(source: str) -> list[int]:
     """Lines in *source* where a comprehension iterates a ``.parents`` sequence.
 
     That is the shape of an unbounded upward search. A single ``parents[N]`` index is a
-    subscript rather than an iteration, so a bounded path reads as clean.
+    subscript rather than an iteration, so a bounded path reads as clean. A pure path's
+    ``.parents`` (``PurePosixPath(name).parents``, say) is exempt: a pure path has no
+    filesystem access, so walking it splits a name rather than searching a disk, and can
+    never reach a module above the project. Every other receiver still counts, a plain
+    variable included, so the check stays conservative.
     """
     return [
         clause.iter.lineno
         for node in ast.walk(ast.parse(source))
         for clause in getattr(node, "generators", [])
-        if isinstance(clause.iter, ast.Attribute) and clause.iter.attr == "parents"
+        if isinstance(clause.iter, ast.Attribute)
+        and clause.iter.attr == "parents"
+        and not _is_pure_path_call(clause.iter.value)
     ]
 
 
@@ -253,6 +272,32 @@ class TestBootstrapStaysInsideTheProject(unittest.TestCase):
             "]\n"
         )
         self.assertEqual(_ancestor_walk_lines(source), [4])
+
+    def test_the_walk_detector_passes_a_pure_path_walk(self) -> None:
+        """A pure path's ``.parents`` is a lexical walk of a name, never a search.
+
+        It touches no filesystem, so it cannot reach a module above the project; the
+        bare class names and the ``pathlib.``-qualified ones are both exempt.
+        """
+        source = (
+            "import pathlib\n"
+            "from pathlib import PurePath, PurePosixPath, PureWindowsPath\n"
+            "a = {p for n in names for p in PurePosixPath(n).parents}\n"
+            "b = [p for p in PureWindowsPath(name).parents]\n"
+            "c = [p for p in PurePath(name).parents]\n"
+            "d = [p for p in pathlib.PurePosixPath(name).parents]\n"
+        )
+        self.assertEqual(_ancestor_walk_lines(source), [])
+
+    def test_the_walk_detector_still_names_a_search_beside_a_pure_walk(self) -> None:
+        """The exemption is the pure path's alone: a real search beside one still fires."""
+        source = (
+            "from pathlib import Path, PurePosixPath\n"
+            "a = [p for p in PurePosixPath(name).parents]\n"
+            "b = [str(p / 'x') for p in Path(__file__).resolve().parents]\n"
+            "c = [p for p in some_var.parents]\n"
+        )
+        self.assertEqual(_ancestor_walk_lines(source), [3, 4])
 
     def test_the_walk_detector_passes_a_bounded_index(self) -> None:
         """``parents[N]`` is the bounded form, and must not read as a walk."""

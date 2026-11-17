@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import errno
 import os
 import re
 import shutil
@@ -228,71 +227,6 @@ class BoundedReadTests(unittest.TestCase):
         finally:
             release.set()
         self.assertIsNone(result)
-
-
-class RunLockTests(unittest.TestCase):
-    def test_a_second_holder_is_refused_until_release(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "state" / "run.lock"
-            first, second = backup_fs.RunLock(path), backup_fs.RunLock(path)
-            self.assertTrue(first.acquire())
-            self.assertFalse(second.acquire())
-            first.release()
-            self.assertTrue(second.acquire())
-            second.release()
-
-    def test_release_without_acquire_is_a_no_op(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            backup_fs.RunLock(Path(tmp) / "run.lock").release()
-
-    def test_a_lock_error_other_than_contention_still_closes_the_descriptor(
-        self,
-    ) -> None:
-        broken = OSError(errno.EIO, "fixture flock failure")
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "run.lock"
-            lock = backup_fs.RunLock(path)
-            lock.acquire()
-            lock.release()
-            before = _open_descriptors()
-            with mock.patch.object(backup_fs, "_flock", side_effect=broken):
-                with self.assertRaises(OSError):
-                    lock.acquire()
-            self.assertEqual(_open_descriptors(), before)
-            self.assertTrue(lock.acquire())
-            with mock.patch.object(backup_fs, "_flock", side_effect=broken):
-                with self.assertRaises(OSError):
-                    lock.release()
-            self.assertEqual(_open_descriptors(), before)
-            # Closing the descriptor dropped the lock, so the next holder takes it.
-            other = backup_fs.RunLock(path)
-            self.assertTrue(other.acquire())
-            other.release()
-
-    def test_a_probe_sees_a_held_lock_without_waiting_taking_or_creating_it(
-        self,
-    ) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "state" / "run.lock"
-            # Every run creates the lock file, so an absent one is free, and asking about it
-            # creates nothing: a dry run that probes still writes nothing.
-            self.assertFalse(backup_fs.lock_is_held(path))
-            self.assertFalse(path.parent.exists())
-            holder = backup_fs.RunLock(path)
-            self.assertTrue(holder.acquire())
-            try:
-                self.assertTrue(backup_fs.lock_is_held(path))
-            finally:
-                holder.release()
-            self.assertFalse(backup_fs.lock_is_held(path))
-            # The probe let go of what it took: a real run takes the lock straight after.
-            self.assertTrue(holder.acquire())
-            holder.release()
-
-
-def _open_descriptors() -> int:
-    """How many descriptors this process holds open, as its /dev/fd lists them."""
-    return len(os.listdir("/dev/fd"))
 
 
 class _RecordingReal:

@@ -1,7 +1,7 @@
-"""The POSIX tree kill in parts: the ps parser, the group walk, the frozen check and the loop.
+"""The POSIX tree kill in parts: the ps parser, the group walk, the frozen check, and the loop.
 
 All but the live ``ps`` test and the unkillable-``ps`` abandon test run on every host. The
-loop takes its signal call, its signal numbers and its process table as seams and treats the
+loop takes its signal call, its signal numbers, and its process table as seams and treats the
 numbers as opaque, so a recorder and scripted tables pin its order (freeze before walking, every stop before any kill) with no
 process at risk. The live nested-session test pins the real signals end to end.
 """
@@ -33,12 +33,12 @@ from boundedrun_posix_tree import ProcessRow, TreeKillSeams
 # wall-clock deadline measures machine load, not correctness. too_slow is suppressed for the same
 # reason: measured failing here at 4 draws in 1.02 s, one draw alone 0.98 s, on a loaded machine.
 settings.register_profile(
-    "fuzz_gate_deterministic",
+    "deterministic",
     derandomize=True,
     deadline=None,
     suppress_health_check=[HealthCheck.too_slow],
 )
-settings.load_profile("fuzz_gate_deterministic")
+settings.load_profile("deterministic")
 
 #: Opaque stand-ins for SIGSTOP and SIGKILL: the loop only forwards them.
 _STOP = 1001

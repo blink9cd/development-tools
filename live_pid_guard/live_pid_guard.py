@@ -1,4 +1,4 @@
-"""Record, probe and clean up the processes a live grandchild test leaves running.
+"""Record, probe, and clean up the processes a live grandchild test leaves running.
 
 The shared fixture ``bounded_run/samples/gc_child.py`` starts a grandchild, and neither process
 exits for an hour. A live test proving that a bound holds therefore owns a cleanup its

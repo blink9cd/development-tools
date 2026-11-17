@@ -47,14 +47,14 @@ from typing import Protocol
 # module does not depend on where the tree lives or on the working directory.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "stdio_utf8"))
 
-import stdio_utf8  # noqa: E402 - import follows the sys.path bootstrap above
+import stdio_utf8
 
 # The wait itself (how long to block on the child, on which clock, and the kill-then-reread
 # order when it expires) lives in this tool's private src/, apart from the spawning and the
 # Windows job containment this file owns.
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
-from boundedrun_drain import (  # noqa: E402 - import follows the sys.path bootstrap above
+from boundedrun_drain import (
     KILL_GRACE_SECONDS as KILL_GRACE_SECONDS,
     Clock,
     KillTreeFn,

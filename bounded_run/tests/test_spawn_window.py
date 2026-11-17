@@ -134,7 +134,7 @@ class _InterruptAfterSpawn:
     """A tracer that raises a stop signal at the first event in ``Popen``'s caller after it returns.
 
     Installed with ``sys.settrace``, it is what a debugger or a pure-Python coverage tracer is: a
-    Python function the interpreter calls on each call, line and return. Its own bytecode is
+    Python function the interpreter calls on each call, line, and return. Its own bytecode is
     where CPython runs a pending signal's handler, so the signal is raised from inside it, and
     the handler's interrupt propagates out of the traced frame. Arming on the return of
     ``Popen.__init__`` means the child exists and nothing before it is touched. It fires only in
@@ -346,7 +346,7 @@ class RegisteredInterruptLiveTests(unittest.TestCase):
 
 
 def _is_call(instruction: dis.Instruction) -> bool:
-    """Whether *instruction* calls something: ``CALL``, ``CALL_KW`` and their kin."""
+    """Whether *instruction* calls something: ``CALL``, ``CALL_KW``, and their kin."""
     return instruction.opname.startswith(("CALL", "PRECALL"))
 
 

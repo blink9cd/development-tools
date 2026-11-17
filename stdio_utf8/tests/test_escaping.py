@@ -41,12 +41,12 @@ _SUBPROCESS_TIMEOUT = 120
 # of the local modules for constants), which under load outlasts even the limit
 # left without a deadline.
 settings.register_profile(
-    "fuzz_gate_deterministic",
+    "deterministic",
     derandomize=True,
     deadline=None,
     suppress_health_check=[HealthCheck.too_slow],
 )
-settings.load_profile("fuzz_gate_deterministic")
+settings.load_profile("deterministic")
 
 #: What ``surrogateescape`` makes of the byte 0xFF in argv or a file name.
 _LONE = "\udcff"

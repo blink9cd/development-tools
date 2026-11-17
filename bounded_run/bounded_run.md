@@ -159,8 +159,8 @@ The properties callers depend on:
    another uid, say); those members are left running, and the caller gets property 3's output-less
    `TimeoutExpired` once the bounded re-read expires. Linux answers `getpgid` for an unreaped
    child, which is why a run under Linux never showed the defect.
-5. **The Windows kill is built to reach the tree after the direct child has exited, by design but
-   not yet by measurement.** `taskkill /T` rebuilds the tree from parent-pid links at the moment
+5. **The Windows kill reaches the tree after the direct child has exited, measured on Windows
+   CI** (*Proving the Windows branch*). `taskkill /T` rebuilds the tree from parent-pid links at the moment
    of the kill, so it cannot start from a leader that has exited, and it misses the orphans of any
    intermediate process that exited. So every child is created with `CREATE_SUSPENDED`, assigned
    to a job object of its own, and only then resumed; every descendant is born inside the job, and
@@ -385,19 +385,27 @@ refuses.
 
 ## Proving the Windows branch
 
-None of the job-object path has run on Windows yet. It was written on a macOS host with no
-Windows machine available, and the first Windows run of this folder's suite, under coverage, is
-its verification. What is established, and where:
+The job-object path was written on a macOS host with no Windows machine available. Its
+verification is this folder's suite run under coverage on a Windows CI runner
+(`windows-latest`): a run on 2026-11-03 gated the folder green at 100% branch coverage with
+the `only-on win32` lines counted, and a run on 2026-11-13 re-gated it green at 100% on that
+day's code. The gate log shows the unit's verdict,
+not each test's, so the live rows below rest on one more fact: none of the three live classes has
+a skip path (no decorator, no `setUp` skip, no environment switch), so a passing unit means each of
+them ran and passed. What is established, and where:
 
 | Check | Runs on | Establishes |
 | --- | --- | --- |
 | `mypy --platform win32` | any host | the Windows-only binding type-checks |
 | `tests/test_job_containment.py` | every host, fake job API | create → assign → resume order; a failed step kills the child; `kill_tree` and every entry point go through the registered job |
 | `tests/test_kernel_job_api.py` | every host, ctypes-marshaled fakes | kernel32 call order and arguments, handle closing, error read before close, the end of a thread walk told apart from a failed one, structure sizes against the documented x64 size (the x86 size is only computed under a 32-bit interpreter, which no run here has used, so it is asserted, not measured) |
-| The exited-leader live test | Windows: not yet run | the grandchild is gone after the timeout; the regression test for property 5 |
-| The unregistered-tree live test | Windows: not yet run | the `taskkill` fallback, now reached only for a pid this module did not start |
-| The nested-session live test | Windows: not yet run | the `taskkill` fallback across a nested run's job, since the test starts the outer child itself; a registered job holding a nested one is documented behavior, not a run |
-| Coverage of the `only-on win32` lines | Windows: not yet run | the real binding, resume and last-error reader execute |
+| The exited-leader live test (`LiveExitedLeaderTests`) | Windows CI: passed, 2026-11-03 | the grandchild is gone after the timeout; the regression test for property 5 |
+| The unregistered-tree live test (`LiveUnregisteredTreeTests`) | Windows CI: passed, 2026-11-03 | the `taskkill` fallback, now reached only for a pid this module did not start |
+| The nested-session live test (`LiveNestedSessionTreeTests`) | Windows CI: passed, 2026-11-03 | the `taskkill` fallback across a nested run's job, since the test starts the outer child itself; a registered job holding a nested one is still documented behavior, not a run |
+| Coverage of the `only-on win32` lines | Windows CI: 100%, 2026-11-03 | the real binding, resume and last-error reader execute |
+
+The pre-job-object Windows exited-leader behavior was never measured: *Measured behavior* keeps
+its `taskkill` explanation labeled as analysis.
 
 ## Measured behavior
 
@@ -419,8 +427,9 @@ On macOS, killing a live tree that crosses a nested run's session: with the sing
 nested run's child and grandchild both outlived the kill, as they did in the scheduled job that
 found the defect. With the freeze-and-walk, neither survives, and the whole live test took 0.55s.
 
-The Windows exited-leader case has not been measured, with `taskkill` or with the job object.
-The analysis that motivated the job, stated as analysis: an exited process is absent from the
+On Windows, the exited-leader case with the job object passed on the CI runner (*Proving the
+Windows branch*): the grandchild was gone after the timeout. With `taskkill`, before the job, it
+was never measured. The analysis that motivated the job, stated as analysis: an exited process is absent from the
 process list even while `Popen` holds its handle, so `taskkill /T /PID <leader>` finds no root
 (its exit code is ignored) and kills nothing; the grandchild then keeps the pipes until the 5s
 post-kill read expires, giving property 3's output-less `TimeoutExpired` with the grandchild still

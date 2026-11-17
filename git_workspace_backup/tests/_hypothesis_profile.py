@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from hypothesis import HealthCheck, settings
 
-PROFILE_NAME = "fuzz_gate_deterministic"
+PROFILE_NAME = "deterministic"
 
 settings.register_profile(
     PROFILE_NAME,

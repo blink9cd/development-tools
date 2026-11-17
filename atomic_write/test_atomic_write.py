@@ -11,31 +11,33 @@ import fnmatch
 import os
 import stat
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+_HERE = Path(__file__).resolve().parent
+#: The grouped suites: this file reached its line cap, so new suites go there and
+#: `load_tests` below folds them into every run of this one.
+_SUITE_DIR = _HERE / "tests"
+sys.path.insert(0, str(_SUITE_DIR))
+sys.path.insert(0, str(_HERE))
 
 import atomic_write  # noqa: E402 - import follows the sys.path bootstrap above
+from _scratch import Scratch  # noqa: E402 - in the suite folder, same bootstrap
+
+#: What each grouped file must yield, floored per file and compared as a key set. An
+#: empty or half-failed discovery is otherwise a passing run, and a file added with no
+#: entry here fails as unfloored. Restated, not derived: a floor computed from
+#: discovery would compare discovery against itself and pass for an empty suite.
+_MIN_TESTS_BY_FILE: dict[str, int] = {
+    "test_create_bytes.py": 6,
+    "test_read_nofollow.py": 26,
+    "test_read_open.py": 7,
+    "test_stage_mode.py": 4,
+}
 
 
-class _Scratch(unittest.TestCase):
-    """A throwaway directory per test; nothing here touches the real tree."""
-
-    def setUp(self) -> None:
-        """Make the directory and schedule its removal."""
-        folder = tempfile.TemporaryDirectory()
-        self.addCleanup(folder.cleanup)
-        self.folder = Path(folder.name)
-
-    def _leftovers(self) -> list[str]:
-        """Every name in the scratch directory, for the cleanup assertions."""
-        return sorted(entry.name for entry in self.folder.iterdir())
-
-
-class ContentTest(_Scratch):
+class ContentTest(Scratch):
     """What lands, and in what bytes."""
 
     def test_a_new_file_gets_exactly_the_bytes_given(self) -> None:
@@ -92,7 +94,7 @@ class ContentTest(_Scratch):
 
 
 @unittest.skipIf(os.name == "nt", "POSIX mode bits are not meaningful on NTFS")
-class ModeTest(_Scratch):
+class ModeTest(Scratch):
     """The mode the file is published with."""
 
     def setUp(self) -> None:
@@ -108,6 +110,14 @@ class ModeTest(_Scratch):
 
         The note this replaces recorded the `mkstemp` measurement and predicted
         exactly that, which is why the umask was still in place to catch it.
+
+        All of that is the history of a creation mode that has since changed
+        again: a staging file with a mode to carry is now created 0600, so that
+        mutant lands 0600 under any umask and the served-mode test fails with
+        or without this. The umask stays, so a later change of the creation
+        mode cannot bring the old blind spot back unseen. The mutant survives
+        the narrower-mode test below instead, which asks for the creation mode
+        itself; the staging-mode suite sets a mode on either side of it.
         """
         super().setUp()
         previous = os.umask(0o077)
@@ -124,7 +134,7 @@ class ModeTest(_Scratch):
         self.assertEqual(stat.S_IMODE(target.stat().st_mode), 0o600)
 
 
-class WindowsHostTest(_Scratch):
+class WindowsHostTest(Scratch):
     """A host with no POSIX mode bits still gets its file."""
 
     def test_a_host_without_fchmod_still_writes_the_file(self) -> None:
@@ -144,10 +154,10 @@ class WindowsHostTest(_Scratch):
             os.__dict__.pop("fchmod", None)
             atomic_write.replace_text(target, "whole\n")
         self.assertEqual(target.read_bytes(), b"whole\n")
-        self.assertEqual(self._leftovers(), ["out.txt"])
+        self.assertEqual(self.leftovers(), ["out.txt"])
 
 
-class PreservedModeTest(_Scratch):
+class PreservedModeTest(Scratch):
     """The mode a caller gets by asking for `PRESERVE` rather than a number.
 
     Five of the writers this module replaces do not stamp a mode on: they keep
@@ -228,7 +238,7 @@ class PreservedModeTest(_Scratch):
                     os.umask(previous)
 
 
-class StagingTest(_Scratch):
+class StagingTest(Scratch):
     """Where the half-written file lives, and what happens to it when the
     write does not finish."""
 
@@ -256,7 +266,7 @@ class StagingTest(_Scratch):
             self.assertRaises(OSError),
         ):
             atomic_write.replace_text(target, "never lands\n")
-        self.assertEqual(self._leftovers(), [])
+        self.assertEqual(self.leftovers(), [])
 
     def test_a_failed_write_leaves_nothing_behind(self) -> None:
         target = self.folder / "target.txt"
@@ -265,7 +275,7 @@ class StagingTest(_Scratch):
             self.assertRaises(OSError),
         ):
             atomic_write.replace_text(target, "never lands\n")
-        self.assertEqual(self._leftovers(), [])
+        self.assertEqual(self.leftovers(), [])
 
     def test_an_interrupt_mid_write_leaves_nothing_behind(self) -> None:
         # Caught as BaseException rather than Exception on purpose: a Ctrl-C
@@ -278,10 +288,10 @@ class StagingTest(_Scratch):
             self.assertRaises(KeyboardInterrupt),
         ):
             atomic_write.replace_text(target, "never lands\n")
-        self.assertEqual(self._leftovers(), [])
+        self.assertEqual(self.leftovers(), [])
 
 
-class StagingNameTest(_Scratch):
+class StagingNameTest(Scratch):
     """The published name builder, which other tools derive ignore patterns from."""
 
     def test_a_staging_file_matches_the_builder_given_wildcards(self) -> None:
@@ -309,7 +319,7 @@ class StagingNameTest(_Scratch):
         self.assertTrue(name.endswith(atomic_write.STAGING_SUFFIX))
 
 
-class BeforeRenameTest(_Scratch):
+class BeforeRenameTest(Scratch):
     """The optional check a caller runs on the finished staging file, and its veto.
 
     It exists for the writers that re-check their target as late as possible: a
@@ -344,7 +354,7 @@ class BeforeRenameTest(_Scratch):
         self.assertEqual(staged.parent, self.folder)
         self.assertTrue(staged.name.endswith(atomic_write.STAGING_SUFFIX))
         self.assertEqual((staged_bytes, target_bytes), (b"new\n", b"old\n"))
-        self.assertEqual(self._leftovers(), ["note.md"])
+        self.assertEqual(self.leftovers(), ["note.md"])
 
     @unittest.skipIf(os.name == "nt", "POSIX mode bits are not meaningful on NTFS")
     def test_the_staging_file_already_carries_its_final_mode(self) -> None:
@@ -390,7 +400,7 @@ class BeforeRenameTest(_Scratch):
         self.assertFalse(landed)
         replace.assert_not_called()
         self.assertEqual(self.target.read_bytes(), b"old\n")
-        self.assertEqual(self._leftovers(), ["note.md"])
+        self.assertEqual(self.leftovers(), ["note.md"])
 
     def test_a_raising_check_propagates_and_removes_the_staging(self) -> None:
         class Refused(RuntimeError):
@@ -402,11 +412,50 @@ class BeforeRenameTest(_Scratch):
         with self.assertRaises(Refused):
             atomic_write.replace_bytes(self.target, b"new\n", before_rename=check)
         self.assertEqual(self.target.read_bytes(), b"old\n")
-        self.assertEqual(self._leftovers(), ["note.md"])
+        self.assertEqual(self.leftovers(), ["note.md"])
 
     def test_without_a_check_a_replace_reports_that_it_landed(self) -> None:
         self.assertTrue(atomic_write.replace_bytes(self.target, b"new\n"))
         self.assertEqual(self.target.read_bytes(), b"new\n")
+
+
+def _tests_by_module(suite: unittest.TestSuite) -> dict[str, int]:
+    """A per-file test count for a suite, however deeply discovery nested it."""
+    counts: dict[str, int] = {}
+    for item in suite:
+        if isinstance(item, unittest.TestSuite):
+            for module, count in _tests_by_module(item).items():
+                counts[module] = counts.get(module, 0) + count
+        else:
+            filename = f"{type(item).__module__}.py"
+            counts[filename] = counts.get(filename, 0) + 1
+    return counts
+
+
+class GroupedSuiteTest(unittest.TestCase):
+    """Fail loudly when a grouped suite is lost from a run of this file."""
+
+    def test_loading_this_module_brings_in_every_grouped_suite(self) -> None:
+        # Through `loadTestsFromModule`, which honors `load_tests` as a real run
+        # does: a count taken from discovery directly would stay green with the
+        # hook deleted and every grouped suite silently out of the run.
+        this = sys.modules[__name__]
+        loaded = _tests_by_module(unittest.TestLoader().loadTestsFromModule(this))
+        self.assertGreater(loaded.pop(f"{__name__}.py"), 0)
+        self.assertEqual(loaded.keys(), _MIN_TESTS_BY_FILE.keys())
+        for filename, floor in _MIN_TESTS_BY_FILE.items():
+            with self.subTest(filename=filename):
+                self.assertGreaterEqual(loaded[filename], floor)
+
+
+def load_tests(
+    loader: unittest.TestLoader, standard_tests: unittest.TestSuite, pattern: str | None
+) -> unittest.TestSuite:
+    """unittest's own hook: fold the grouped suites in beside this file's tests."""
+    standard_tests.addTests(
+        loader.discover(str(_SUITE_DIR), top_level_dir=str(_SUITE_DIR))
+    )
+    return standard_tests
 
 
 if __name__ == "__main__":  # pragma: no cover - direct execution entry point

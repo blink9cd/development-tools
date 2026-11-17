@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""The daily agent's plist, its three-answer state, and install/uninstall ordering.
+"""The daily agent's plist, and the install, uninstall and state read around launchd_agent.
 
-launchctl never runs for real: every call is answered by a FakeRunner route, which refuses an
-unrouted launchctl outright. ``home`` is always a temporary directory, the uid is a fixture
-literal, and every wait runs on a fake clock whose sleeps are recorded, never slept.
+launchctl never runs for real. Install, uninstall and the state read are handed the shared
+``launchd_agent``'s own scripted ``FakeLaunchctl``, which checks each argv against a queue and
+keeps fake time, so no test waits; the one adapter test routes through a FakeRunner, which
+refuses an unrouted launchctl outright. ``home`` is always a temporary directory.
 """
 
 from __future__ import annotations
@@ -11,6 +12,9 @@ from __future__ import annotations
 import io
 import plistlib
 import shlex
+import stat
+import subprocess
+import sys
 import tempfile
 import unittest
 from collections.abc import Sequence
@@ -20,93 +24,39 @@ from pathlib import Path
 import _fixtures as fx
 
 import backup_launchd as bl
+import launchd_agent
 import os_schedule_gen
-from backup_proc import LAUNCHCTL_TIMEOUT_S, NOT_STARTED_RC, TIMEOUT_RC
+from backup_proc import NOT_STARTED_RC, TIMEOUT_RC
 from backup_status import AGENT_ABSENT, AGENT_LOADED, AGENT_UNKNOWN
 
-#: The uid every test hands the module; never the host's own.
-FIXTURE_UID = 501
-#: launchctl print exits that are neither loaded nor absent: an error, a timeout, no binary.
-UNKNOWN_CODES = (5, TIMEOUT_RC, NOT_STARTED_RC)
-SERVICE = f"gui/{FIXTURE_UID}/{bl.LABEL}"
-#: The fake clock's deadline, and so how many polls a wait that never settles makes.
-DEADLINE_S = 2.0
-STUCK_SLEEPS = [bl.POLL_INTERVAL_S] * int(DEADLINE_S / bl.POLL_INTERVAL_S)
+# launchd_agent's own scripted launchctl, from the tests/ folder beside the module, so these
+# tests fake launchd exactly as the library's own suites do rather than through a copy.
+sys.path.append(str(Path(launchd_agent.__file__).resolve().parent / "tests"))
 
+from _launchd_fixtures import (  # noqa: E402 - on sys.path just above
+    ABSENT,
+    LOADED,
+    OK,
+    UID,
+    Answer,
+    FakeLaunchctl,
+)
 
-class FakeLaunchctl:
-    """Answers ``print`` from a queue (absent once it runs out) and records every call.
-
-    When *watch* is given, each verb also records whether that path existed as it arrived.
-    """
-
-    def __init__(
-        self,
-        print_codes: Sequence[int] = (),
-        *,
-        bootstrap_code: int = 0,
-        bootout_code: int = 0,
-        watch: "Path | None" = None,
-    ) -> None:
-        self.print_codes = list(print_codes)
-        self.bootstrap_code = bootstrap_code
-        self.bootout_code = bootout_code
-        self.watch = watch
-        self.argvs: list[list[str]] = []
-        self.seen: list[tuple[str, bool]] = []
-
-    @property
-    def verbs(self) -> list[str]:
-        """The verb of every call, in order."""
-        return [argv[1] for argv in self.argvs]
-
-    def __call__(self, argv: Sequence[str]) -> "tuple[int, str, str]":
-        verb = argv[1]
-        self.argvs.append(list(argv))
-        if self.watch is not None:
-            self.seen.append((verb, self.watch.exists()))
-        if verb == "print":
-            code = self.print_codes.pop(0) if self.print_codes else bl.PRINT_ABSENT_RC
-            return code, "", f"fixture print {code}" if code else ""
-        if verb == "bootstrap":
-            failed = "fixture bootstrap error" if self.bootstrap_code else ""
-            return self.bootstrap_code, "", failed
-        return self.bootout_code, "", ""
-
-
-class Recorder:
-    """A RunCmd routing launchctl through FakeRunner, recording each call's cwd and bound."""
-
-    def __init__(self, launchctl: fx.Route) -> None:
-        self.runner = fx.FakeRunner({"launchctl": launchctl})
-        self.bounds: list[tuple["Path | None", float]] = []
-
-    def __call__(
-        self, argv: Sequence[str], cwd: "Path | None", timeout: float
-    ) -> "tuple[int, str, str]":
-        self.bounds.append((cwd, timeout))
-        return self.runner(argv, cwd, timeout)
-
-
-class FakeClock:
-    """A monotonic clock that only moves when slept on."""
-
-    def __init__(self) -> None:
-        self.now = 0.0
-        self.sleeps: list[float] = []
-
-    def sleep(self, seconds: float) -> None:
-        self.sleeps.append(seconds)
-        self.now += seconds
+SERVICE = f"gui/{UID}/{bl.LABEL}"
+PRINT = ["/bin/launchctl", "print", SERVICE]
+BOOTOUT = ["/bin/launchctl", "bootout", SERVICE]
+#: A print that is neither loaded nor absent.
+UNKNOWN = (5, "", "fixture print failure\n")
+#: Enough reads of one unchanging answer to outlast the library's wait deadline.
+READS_PAST_THE_DEADLINE = (
+    int(launchd_agent.DEFAULT_DEADLINE_S / launchd_agent.POLL_S) + 1
+)
 
 
 class LaunchdTests(unittest.TestCase):
     def setUp(self) -> None:
         self.home = Path(self.enterContext(tempfile.TemporaryDirectory()))
-        self.clock = FakeClock()
-        self.waiter = bl.Waiter(
-            clock=lambda: self.clock.now, sleep=self.clock.sleep, deadline_s=DEADLINE_S
-        )
+        self.fake = FakeLaunchctl(self)
         self.spec = bl.AgentSpec(
             home=self.home,
             state_base=self.home / ".workspace_backup",
@@ -116,38 +66,51 @@ class LaunchdTests(unittest.TestCase):
             ),
             schedule=os_schedule_gen.DailySchedule(hour=6, minute=0),
             git_path="/opt/fixture-git/bin/git",
-            uid=FIXTURE_UID,
             destination=Path("/opt/fixture-dest"),
         )
         self.out, self.err = io.StringIO(), io.StringIO()
 
+    def bootstrap(self, home: "Path | None" = None) -> list[str]:
+        """The bootstrap install runs: the GUI domain and the plist under *home*."""
+        target = bl.plist_path(self.home if home is None else home)
+        return ["/bin/launchctl", "bootstrap", f"gui/{UID}", str(target)]
+
+    def expect_reads(self, answer: Answer, count: int = 1) -> None:
+        """Queue *count* prints of the agent, each answered *answer*."""
+        for _ in range(count):
+            self.fake.expect(PRINT, answer)
+
+    def expect_loading(self) -> None:
+        """Queue a clean install: bootout, absent, bootstrap, loaded."""
+        self.fake.expect(BOOTOUT, OK)
+        self.expect_reads(ABSENT)
+        self.fake.expect(self.bootstrap(), OK)
+        self.expect_reads(LOADED)
+
     def _install(
-        self,
-        launchctl: fx.Route,
-        *,
-        dry_run: bool = False,
-        spec: "bl.AgentSpec | None" = None,
+        self, *, dry_run: bool = False, spec: "bl.AgentSpec | None" = None
     ) -> int:
         self.out, self.err = io.StringIO(), io.StringIO()
         return bl.install(
             self.spec if spec is None else spec,
-            run=fx.FakeRunner({"launchctl": launchctl}),
-            waiter=self.waiter,
+            self.fake.ctl(),
             dry_run=dry_run,
             out=self.out,
             err=self.err,
         )
 
-    def _uninstall(self, launchctl: fx.Route) -> int:
+    def _uninstall(self) -> int:
         self.out, self.err = io.StringIO(), io.StringIO()
-        return bl.uninstall(
-            self.home,
-            FIXTURE_UID,
-            run=fx.FakeRunner({"launchctl": launchctl}),
-            waiter=self.waiter,
-            out=self.out,
-            err=self.err,
-        )
+        return bl.uninstall(self.home, self.fake.ctl(), out=self.out, err=self.err)
+
+    def assert_one_error(self, *fragments: str) -> None:
+        """One ERROR line on stderr naming every fragment, and nothing on stdout."""
+        lines = self.err.getvalue().splitlines()
+        self.assertEqual(len(lines), 1, lines)
+        self.assertTrue(lines[0].startswith("ERROR: "), lines)
+        for fragment in fragments:
+            self.assertIn(fragment, lines[0])
+        self.assertEqual(self.out.getvalue(), "")
 
     def test_the_plist_runs_if_due_daily_and_at_load_with_a_minimal_path(self) -> None:
         plist = plistlib.loads(bl.render_plist(self.spec))
@@ -201,119 +164,94 @@ class LaunchdTests(unittest.TestCase):
             self.home / "Library" / "LaunchAgents" / f"{bl.LABEL}.plist",
         )
 
-    def test_agent_state_reads_three_answers_through_one_bounded_print(self) -> None:
-        answers = {0: AGENT_LOADED, bl.PRINT_ABSENT_RC: AGENT_ABSENT}
-        answers.update(dict.fromkeys(UNKNOWN_CODES, AGENT_UNKNOWN))
-        for code, expected in answers.items():
-            with self.subTest(code=code):
-                launchctl = FakeLaunchctl([code])
-                runner = Recorder(launchctl)
-                self.assertEqual(bl.agent_state(FIXTURE_UID, run=runner), expected)
-                self.assertEqual(launchctl.argvs, [[bl.LAUNCHCTL, "print", SERVICE]])
-                self.assertEqual(runner.bounds, [(None, LAUNCHCTL_TIMEOUT_S)])
+    def test_agent_state_is_one_bounded_print_of_bin_launchctl(self) -> None:
+        answers: "dict[str, tuple[Answer, str]]" = {
+            "loaded": (LOADED, AGENT_LOADED),
+            "absent": (ABSENT, AGENT_ABSENT),
+            "error": (UNKNOWN, AGENT_UNKNOWN),
+            "timeout": (subprocess.TimeoutExpired("launchctl", 1.0), AGENT_UNKNOWN),
+            "cannot run": (OSError("no launchctl"), AGENT_UNKNOWN),
+        }
+        for name, (answer, expected) in answers.items():
+            with self.subTest(name):
+                fake = FakeLaunchctl(self).expect(PRINT, answer)
+                self.assertEqual(bl.agent_state(fake.ctl()), expected)
+                self.assertEqual(fake.calls, [PRINT])
+                self.assertEqual(fake.timeouts, [launchd_agent.LAUNCHCTL_TIMEOUT_S])
 
-    def test_waiting_polls_until_the_wanted_state_or_the_deadline(self) -> None:
-        runner = fx.FakeRunner({"launchctl": FakeLaunchctl([0, 0])})
-        reading = bl.wait_for_state(
-            FIXTURE_UID, AGENT_ABSENT, run=runner, waiter=self.waiter
-        )
-        self.assertEqual(reading.state, AGENT_ABSENT)
-        self.assertEqual(self.clock.sleeps, [bl.POLL_INTERVAL_S] * 2)
-        self.clock.sleeps.clear()
-        loading = fx.FakeRunner({"launchctl": FakeLaunchctl([bl.PRINT_ABSENT_RC, 0])})
-        reading = bl.wait_for_state(
-            FIXTURE_UID, AGENT_LOADED, run=loading, waiter=self.waiter
-        )
+    def test_the_host_launchctl_runs_each_call_through_the_tool_runner(self) -> None:
+        seen: list[tuple[list[str], "Path | None", float]] = []
+        codes = iter([0, launchd_agent.PRINT_ABSENT_RC, 5, TIMEOUT_RC, NOT_STARTED_RC])
+
+        def route(argv: Sequence[str]) -> "tuple[int, str, str]":
+            return next(codes), "fixture out", "fixture err"
+
+        runner = fx.FakeRunner({"launchctl": route})
+
+        def run(
+            argv: Sequence[str], cwd: "Path | None", timeout: float
+        ) -> "tuple[int, str, str]":
+            seen.append((list(argv), cwd, timeout))
+            return runner(argv, cwd, timeout)
+
+        slept: list[str] = []
+        waiter = bl.Waiter(clock=lambda: 7.0, sleep=lambda s: slept.append("s"))
+        ctl = bl.host_launchctl(run, UID, waiter)
+        self.assertEqual((ctl.uid, ctl.clock()), (UID, 7.0))
+        ctl.sleep(0.5)
+        self.assertEqual(slept, ["s"])
+        states = [bl.agent_state(ctl) for _ in range(5)]
         self.assertEqual(
-            (reading.state, self.clock.sleeps), (AGENT_LOADED, [bl.POLL_INTERVAL_S])
+            states,
+            [AGENT_LOADED, AGENT_ABSENT, AGENT_UNKNOWN, AGENT_UNKNOWN, AGENT_UNKNOWN],
         )
-        self.clock.sleeps.clear()
-        stuck = fx.FakeRunner({"launchctl": FakeLaunchctl([0] * 20)})
-        reading = bl.wait_for_state(
-            FIXTURE_UID, AGENT_ABSENT, run=stuck, waiter=self.waiter
-        )
-        self.assertEqual((reading.state, reading.code), (AGENT_LOADED, 0))
-        self.assertEqual(self.clock.sleeps, STUCK_SLEEPS)
-
-    def test_an_unknown_answer_ends_the_wait_at_once(self) -> None:
-        for wanted in (AGENT_ABSENT, AGENT_LOADED):
-            for code in UNKNOWN_CODES:
-                with self.subTest(wanted=wanted, code=code):
-                    self.clock.sleeps.clear()
-                    runner = fx.FakeRunner({"launchctl": FakeLaunchctl([code])})
-                    reading = bl.wait_for_state(
-                        FIXTURE_UID, wanted, run=runner, waiter=self.waiter
-                    )
-                    self.assertEqual(reading.state, AGENT_UNKNOWN)
-                    self.assertEqual(reading.code, code)
-                    self.assertEqual(reading.detail, f"fixture print {code}")
-                    self.assertEqual(self.clock.sleeps, [])
-
-    def test_waiting_for_an_unsettled_state_is_refused(self) -> None:
-        runner = fx.FakeRunner({"launchctl": FakeLaunchctl()})
-        for wanted in (AGENT_UNKNOWN, "bogus"):
-            with self.subTest(wanted), self.assertRaises(ValueError):
-                bl.wait_for_state(FIXTURE_UID, wanted, run=runner, waiter=self.waiter)
+        bound = launchd_agent.LAUNCHCTL_TIMEOUT_S
+        self.assertEqual(seen, [(PRINT, None, bound)] * 5)
 
     def test_a_dry_run_prints_the_plan_and_writes_nothing(self) -> None:
-        launchctl = FakeLaunchctl()
-        self.assertEqual(self._install(launchctl, dry_run=True), 0)
+        self.assertEqual(self._install(dry_run=True), 0)
         printed = self.out.getvalue()
         self.assertIn(bl.LABEL, printed)
         self.assertIn(bl.render_plist(self.spec).decode("utf-8"), printed)
-        self.assertIn(str(bl.plist_path(self.home)), printed)
+        self.assertIn(f"  {shlex.join(BOOTOUT)}", printed)
+        self.assertIn(f"  {shlex.join(self.bootstrap())}", printed)
         self.assertFalse(bl.plist_path(self.home).exists())
         self.assertFalse(self.spec.state_base.exists())
-        self.assertEqual(launchctl.verbs, [])
+        self.assertEqual(self.fake.calls, [])
 
     def test_install_writes_then_unloads_then_bootstraps_then_confirms(self) -> None:
         # The first install has nothing to boot out, so bootout's exit is not the check.
-        for bootout_code in (0, 3):
-            with self.subTest(bootout_code=bootout_code):
-                # A fresh home each time: the watch must see this install's own plist, not
-                # one an earlier iteration left.
+        for bootout in (OK, (3, "", "no such service")):
+            with self.subTest(bootout=bootout):
                 home = Path(self.enterContext(tempfile.TemporaryDirectory()))
                 spec = replace(
                     self.spec, home=home, state_base=home / ".workspace_backup"
                 )
                 target = bl.plist_path(home)
-                self.assertFalse(target.exists())
-                self.out, self.err = io.StringIO(), io.StringIO()
-                launchctl = FakeLaunchctl(
-                    [bl.PRINT_ABSENT_RC, 0], bootout_code=bootout_code, watch=target
-                )
-                runner = Recorder(launchctl)
-                code = bl.install(
-                    spec,
-                    run=runner,
-                    waiter=self.waiter,
-                    dry_run=False,
-                    out=self.out,
-                    err=self.err,
-                )
-                self.assertEqual(code, 0, self.err.getvalue())
+                self.fake = FakeLaunchctl(self)
+                seen: list[bool] = []
+                self.fake.before_each = lambda: seen.append(target.exists())
+                self.fake.expect(BOOTOUT, bootout).expect(PRINT, ABSENT)
+                self.fake.expect(self.bootstrap(home), OK).expect(PRINT, LOADED)
+                self.assertEqual(self._install(spec=spec), 0, self.err.getvalue())
+                self.assertEqual(self.fake.script, [])
+                self.assertEqual(seen, [True] * 4)
                 self.assertEqual(
-                    launchctl.argvs,
-                    [
-                        [bl.LAUNCHCTL, "bootout", SERVICE],
-                        [bl.LAUNCHCTL, "print", SERVICE],
-                        [bl.LAUNCHCTL, "bootstrap", f"gui/{FIXTURE_UID}", str(target)],
-                        [bl.LAUNCHCTL, "print", SERVICE],
-                    ],
+                    set(self.fake.timeouts), {launchd_agent.LAUNCHCTL_TIMEOUT_S}
                 )
-                self.assertEqual(launchctl.seen[0], ("bootout", True))
-                self.assertEqual(set(runner.bounds), {(None, LAUNCHCTL_TIMEOUT_S)})
-                self.assertTrue(os_schedule_gen.logs_dir(spec.state_base).is_dir())
+                logs = os_schedule_gen.logs_dir(spec.state_base)
+                self.assertEqual(stat.S_IMODE(logs.stat().st_mode), 0o700)
                 self.assertEqual(target.read_bytes(), bl.render_plist(spec))
                 self.assertEqual(self.err.getvalue(), "")
 
     def test_install_names_the_run_that_proves_it_and_where_a_failure_shows(
         self,
     ) -> None:
-        self.assertEqual(self._install(FakeLaunchctl([bl.PRINT_ABSENT_RC, 0])), 0)
+        self.expect_loading()
+        self.assertEqual(self._install(), 0, self.err.getvalue())
         printed = self.out.getvalue()
         # A kickstart runs --if-due, which on a day already covered only records a skip.
-        self.assertNotIn(shlex.join([bl.LAUNCHCTL, "kickstart", SERVICE]), printed)
+        self.assertNotIn(shlex.join(["/bin/launchctl", "kickstart", SERVICE]), printed)
         self.assertIn("next scheduled firing", printed)
         self.assertIn('"last exit code"', printed)
         error_log = plistlib.loads(bl.render_plist(self.spec))["StandardErrorPath"]
@@ -321,12 +259,7 @@ class LaunchdTests(unittest.TestCase):
         status += ["--destination", "/opt/fixture-dest"]
         commands = [line.strip() for line in printed.splitlines() if line[:2] == "  "]
         self.assertEqual(
-            commands,
-            [
-                shlex.join(status),
-                shlex.quote(error_log),
-                shlex.join([bl.LAUNCHCTL, "print", SERVICE]),
-            ],
+            commands, [shlex.join(status), shlex.quote(error_log), shlex.join(PRINT)]
         )
 
     def test_a_failed_bootstrap_that_launchd_then_reports_loaded_is_installed(
@@ -334,58 +267,58 @@ class LaunchdTests(unittest.TestCase):
     ) -> None:
         # Reinstalling while the old agent still tears down: print already says absent, and
         # bootstrap fails with an I/O error that the next reads of launchd's state outlast.
-        absent = bl.PRINT_ABSENT_RC
-        launchctl = FakeLaunchctl([absent, absent, 0], bootstrap_code=5)
-        self.assertEqual(self._install(launchctl), 0, self.err.getvalue())
-        self.assertEqual(
-            launchctl.verbs, ["bootout", "print", "bootstrap", "print", "print"]
+        self.fake.expect(BOOTOUT, OK).expect(PRINT, ABSENT)
+        self.fake.expect(self.bootstrap(), (5, "", "Input/output error"))
+        self.expect_reads(ABSENT)
+        self.expect_reads(LOADED)
+        self.assertEqual(self._install(), 0, self.err.getvalue())
+        self.assertEqual(self.fake.script, [])
+
+    def test_an_old_agent_that_never_unloads_is_launchds_error_and_recoverable(
+        self,
+    ) -> None:
+        self.fake.expect(BOOTOUT, OK)
+        self.expect_reads(LOADED, READS_PAST_THE_DEADLINE)
+        self.assertEqual(self._install(), 2)
+        deadline = f"{launchd_agent.DEFAULT_DEADLINE_S:g} s"
+        self.assert_one_error(
+            f"{bl.LABEL}: still loaded after {deadline}", "re-running install recovers"
+        )
+        self.assertTrue(bl.plist_path(self.home).exists())
+
+    def test_an_unknown_answer_ends_install_at_once_and_says_so(self) -> None:
+        for after_bootstrap in (False, True):
+            with self.subTest(after_bootstrap=after_bootstrap):
+                self.fake = FakeLaunchctl(self).expect(BOOTOUT, OK)
+                if after_bootstrap:
+                    self.expect_reads(ABSENT)
+                    self.fake.expect(self.bootstrap(), OK)
+                self.expect_reads(UNKNOWN)
+                self.assertEqual(self._install(), 2)
+                self.assertEqual(self.fake.sleeps, [])
+                self.assert_one_error(
+                    "answered unknown (exit 5: fixture print failure)",
+                    "an agent loaded before this install may already be unloaded",
+                    "re-running install recovers",
+                )
+
+    def test_a_bootstrap_that_fails_and_never_loads_names_its_failure(self) -> None:
+        self.fake.expect(BOOTOUT, OK).expect(PRINT, ABSENT)
+        self.fake.expect(self.bootstrap(), (5, "", "fixture bootstrap error\n"))
+        self.expect_reads(ABSENT, READS_PAST_THE_DEADLINE)
+        self.assertEqual(self._install(), 2)
+        self.assert_one_error(
+            "still absent",
+            "launchctl bootstrap failed (exit 5): fixture bootstrap error",
+            "re-running install recovers",
         )
 
-    def test_each_install_failure_exits_2_and_says_why(self) -> None:
-        absent = bl.PRINT_ABSENT_RC
-        cases: dict[str, tuple[FakeLaunchctl, list[str], tuple[str, ...]]] = {
-            "old agent never unloads": (
-                FakeLaunchctl([0] * 20),
-                ["bootout", *["print"] * 5],
-                ("still loaded",),
-            ),
-            # A failed bootstrap is not final until launchd's state confirms it.
-            "bootstrap fails and never loads": (
-                FakeLaunchctl([absent], bootstrap_code=5),
-                ["bootout", "print", "bootstrap", *["print"] * 5],
-                (
-                    "bootstrap failed (exit 5)",
-                    "fixture bootstrap error",
-                    "still absent",
-                ),
-            ),
-            "not loaded afterward": (
-                FakeLaunchctl([absent]),
-                ["bootout", "print", "bootstrap", *["print"] * 5],
-                ("still absent",),
-            ),
-        }
-        for code in UNKNOWN_CODES:
-            cases[f"unknown while unloading {code}"] = (
-                FakeLaunchctl([code]),
-                ["bootout", "print"],
-                (f"exited {code}", f"fixture print {code}"),
-            )
-            cases[f"unknown once bootstrapped {code}"] = (
-                FakeLaunchctl([absent, code]),
-                ["bootout", "print", "bootstrap", "print"],
-                (f"exited {code}",),
-            )
-        for label, (launchctl, verbs, fragments) in cases.items():
-            with self.subTest(label):
-                self.assertEqual(self._install(launchctl), 2)
-                self.assertEqual(launchctl.verbs, verbs)
-                for fragment in fragments:
-                    self.assertIn(fragment, self.err.getvalue())
-                # What is left, and the way out: a first install has no previous agent to
-                # name, and every one of these leaves a plist a second install replaces.
-                self.assertNotIn("previous agent", self.err.getvalue())
-                self.assertIn("re-running install recovers", self.err.getvalue())
+    def test_a_launchctl_that_cannot_run_is_one_error_line(self) -> None:
+        self.fake.expect(BOOTOUT, OSError("fixture: no launchctl"))
+        self.assertEqual(self._install(), 2)
+        self.assert_one_error(
+            "could not run launchctl bootout", "re-running install recovers"
+        )
 
     def test_an_unusable_spec_exits_2_before_any_write_or_verb(self) -> None:
         cases = {
@@ -406,22 +339,23 @@ class LaunchdTests(unittest.TestCase):
         for label, spec in cases.items():
             for dry_run in (True, False):
                 with self.subTest(label, dry_run=dry_run):
-                    launchctl = FakeLaunchctl()
-                    self.assertEqual(
-                        self._install(launchctl, dry_run=dry_run, spec=spec), 2
-                    )
-                    self.assertEqual(launchctl.verbs, [])
-                    self.assertIn("ERROR", self.err.getvalue())
-                    self.assertEqual(self.out.getvalue(), "")
+                    self.assertEqual(self._install(dry_run=dry_run, spec=spec), 2)
+                    self.assertEqual(self.fake.calls, [])
+                    self.assert_one_error()
         self.assertFalse(bl.plist_path(self.home).exists())
         self.assertFalse(self.spec.state_base.exists())
 
-    def test_a_plist_that_cannot_be_written_exits_2_before_any_verb(self) -> None:
-        (self.home / "Library").write_bytes(b"not a directory")
-        launchctl = FakeLaunchctl()
-        self.assertEqual(self._install(launchctl), 2)
-        self.assertEqual(launchctl.verbs, [])
-        self.assertIn("could not", self.err.getvalue())
+    def test_a_plist_or_log_folder_that_cannot_be_written_exits_2_before_any_verb(
+        self,
+    ) -> None:
+        blockers = {"logs": self.spec.state_base, "plist": self.home / "Library"}
+        for name, blocker in blockers.items():
+            with self.subTest(name):
+                blocker.write_bytes(b"not a directory")
+                self.assertEqual(self._install(), 2)
+                self.assertEqual(self.fake.calls, [])
+                self.assert_one_error("could not")
+                blocker.unlink()
 
     def test_printed_commands_survive_paths_with_spaces(self) -> None:
         spec = replace(
@@ -429,62 +363,50 @@ class LaunchdTests(unittest.TestCase):
             python="/opt/fixture python/bin/python3",
             script=Path("/opt/fixture kit/workspace_backup.py"),
         )
-        self.assertEqual(
-            self._install(FakeLaunchctl([bl.PRINT_ABSENT_RC, 0]), spec=spec), 0
-        )
+        self.expect_loading()
+        self.assertEqual(self._install(spec=spec), 0)
         commands = [
             shlex.split(line)
             for line in self.out.getvalue().splitlines()
             if "--mode status" in line
         ]
-        self.assertEqual(
-            commands,
-            [
-                [
-                    spec.python,
-                    str(spec.script),
-                    "--mode",
-                    "status",
-                    "--destination",
-                    "/opt/fixture-dest",
-                ]
-            ],
-        )
+        status = [spec.python, str(spec.script), "--mode", "status"]
+        self.assertEqual(commands, [[*status, "--destination", "/opt/fixture-dest"]])
 
     def test_uninstall_removes_the_plist_only_once_launchd_confirms(self) -> None:
         target = bl.plist_path(self.home)
         target.parent.mkdir(parents=True)
         target.write_bytes(b"plist")
-        stuck = FakeLaunchctl([0] * 20)
-        self.assertEqual(self._uninstall(stuck), 2)
-        self.assertEqual(stuck.verbs, ["bootout", *["print"] * 5])
+        self.fake.expect(BOOTOUT, OK)
+        self.expect_reads(LOADED, READS_PAST_THE_DEADLINE)
+        self.assertEqual(self._uninstall(), 2)
         self.assertTrue(target.exists())
-        self.assertIn("kept", self.err.getvalue())
+        self.assert_one_error("still loaded", "its plist is kept")
         # A bootout that fails is not the check: the agent may never have been loaded.
-        gone = FakeLaunchctl(bootout_code=3, watch=target)
-        self.assertEqual(self._uninstall(gone), 0)
+        seen: list[bool] = []
+        self.fake.before_each = lambda: seen.append(target.exists())
+        self.fake.expect(BOOTOUT, (3, "", "no such service")).expect(PRINT, ABSENT)
+        self.assertEqual(self._uninstall(), 0)
         self.assertFalse(target.exists())
-        self.assertEqual(gone.seen, [("bootout", True), ("print", True)])
-        self.assertEqual(self._uninstall(FakeLaunchctl()), 0)
+        self.assertEqual(seen, [True, True])
+        self.fake.expect(BOOTOUT, OK).expect(PRINT, ABSENT)
+        self.assertEqual(self._uninstall(), 0)
 
     def test_uninstall_keeps_the_plist_when_launchd_answers_unknown(self) -> None:
         target = bl.plist_path(self.home)
         target.parent.mkdir(parents=True)
         target.write_bytes(b"plist")
-        for code in UNKNOWN_CODES:
-            with self.subTest(code=code):
-                self.clock.sleeps.clear()
-                launchctl = FakeLaunchctl([code])
-                self.assertEqual(self._uninstall(launchctl), 2)
-                self.assertEqual(launchctl.verbs, ["bootout", "print"])
-                self.assertEqual(self.clock.sleeps, [])
-                self.assertTrue(target.exists())
-                self.assertIn(f"exited {code}", self.err.getvalue())
+        self.fake.expect(BOOTOUT, OK).expect(PRINT, UNKNOWN)
+        self.assertEqual(self._uninstall(), 2)
+        self.assertEqual(self.fake.sleeps, [])
+        self.assertTrue(target.exists())
+        self.assert_one_error("exit 5: fixture print failure", "its plist is kept")
 
     def test_uninstall_reports_a_plist_it_cannot_remove(self) -> None:
         # A directory where the plist belongs: unlink refuses it.
         bl.plist_path(self.home).mkdir(parents=True)
-        self.assertEqual(self._uninstall(FakeLaunchctl()), 2)
+        self.fake.expect(BOOTOUT, OK).expect(PRINT, ABSENT)
+        self.assertEqual(self._uninstall(), 2)
         self.assertIn("could not remove", self.err.getvalue())
         self.assertTrue(bl.plist_path(self.home).is_dir())
 

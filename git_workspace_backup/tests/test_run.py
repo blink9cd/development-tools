@@ -8,6 +8,8 @@ written) are pinned in test_run_guards.py.
 
 from __future__ import annotations
 
+import os
+import stat
 import unittest
 from dataclasses import replace
 from datetime import timedelta
@@ -17,7 +19,8 @@ from _run_case import FIRST_NAME, MACHINE, START, RunCase
 
 import backup_rearm as brr
 import backup_run as brun
-from backup_fs import RunLock, sha256_file
+import run_lock
+from backup_fs import sha256_file
 from backup_ledger import LEDGER_NAME, load_ledger, read_last_run, state_dir_for
 from backup_manifest import MANIFEST_NAME, parse_manifest
 from backup_model import (
@@ -34,6 +37,11 @@ from backup_promote import PruneResult
 from backup_restore_doc import RESTORE_DOC_NAME
 
 _MEMORY_FAILS = {"memory_snapshot.py": lambda argv: (1, "", "boom")}
+#: The umask most sessions run under, which a lock asked for as private must not depend on.
+_USUAL_UMASK = 0o022
+#: What the run's lock file and each folder its lock call creates must be: owner-only.
+_PRIVATE_FILE = 0o600
+_PRIVATE_DIR = 0o700
 
 
 class RunTests(RunCase):
@@ -165,8 +173,8 @@ class RunTests(RunCase):
         self.assertEqual(len(self.notes), 2)
 
     def test_a_held_lock_skip_prints_only_and_a_failed_record_survives_it(self) -> None:
-        holder = RunLock(self.base / brun.LOCK_NAME)
-        self.assertTrue(holder.acquire())
+        holder = run_lock.acquire(self.base / brun.LOCK_NAME, private=True)
+        assert holder is not None
         self.addCleanup(holder.release)
         self.assertEqual(self.run_backup(self.request()), brun.EXIT_ATTENTION)
         self.assertIsNone(read_last_run(self.state))
@@ -180,11 +188,27 @@ class RunTests(RunCase):
         self.assertEqual(self.run_backup(linux), brun.EXIT_UNRUNNABLE)
         failed = self.last_run()
         self.assertEqual(failed.outcome, OUTCOME_FAILED)
-        self.assertTrue(holder.acquire())
+        holder = run_lock.acquire(self.base / brun.LOCK_NAME, private=True)
+        assert holder is not None
+        self.addCleanup(holder.release)
         self.notes.clear()
         self.assertEqual(self.run_backup(self.request()), brun.EXIT_ATTENTION)
         self.assertEqual(self.last_run(), failed)
         self.assertEqual(self.notes, [])
+
+    def test_the_run_lock_and_the_directory_it_makes_are_the_owners_alone(
+        self,
+    ) -> None:
+        # Under the usual umask a plain open makes the lock 0644 and its folder 0755, so
+        # both modes come from the run's own lock call asking for a private lock.
+        self.assertFalse(self.base.exists())
+        previous = os.umask(_USUAL_UMASK)
+        self.addCleanup(os.umask, previous)
+        linux = replace(self.request(), platform="linux")
+        self.assertEqual(self.run_backup(linux), brun.EXIT_UNRUNNABLE)
+        lock = self.base / brun.LOCK_NAME
+        self.assertEqual(stat.S_IMODE(lock.stat().st_mode), _PRIVATE_FILE)
+        self.assertEqual(stat.S_IMODE(self.base.stat().st_mode), _PRIVATE_DIR)
 
     def test_a_clock_set_back_never_prunes_the_snapshot_its_own_run_promoted(
         self,

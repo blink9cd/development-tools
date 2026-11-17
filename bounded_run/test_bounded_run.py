@@ -35,7 +35,7 @@ class _FakeProc:
         # cannot distinguish kill-then-reread from reread-then-kill.
         self.call_log: list[str] = []
 
-    def communicate(  # noqa: A002 - `input` mirrors Popen's parameter name
+    def communicate(
         self, timeout: float | None = None, input: str | None = None
     ) -> tuple[str, str]:
         self.calls += 1
@@ -332,7 +332,7 @@ class ArgvTypeTests(unittest.TestCase):
 _GRANDCHILD_LIFETIME = 20.0
 
 #: The exited-leader bound. The child exits as soon as the grandchild is started, but its
-#: interpreter start, imports and Popen must all come first (a kill that lands earlier leaves
+#: interpreter start, imports, and Popen must all come first (a kill that lands earlier leaves
 #: no grandchild to test), so the bound leaves a loaded machine room for them.
 _EXITED_LEADER_TIMEOUT = 3.0
 

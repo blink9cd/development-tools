@@ -57,7 +57,7 @@ from collections.abc import Sequence
 from backup_build import EXTRAS_ZIP, PREFIX_CLAUDE
 from backup_machine import is_valid_label
 from backup_model import BundleEntry, FileEntry, Manifest
-from backup_rearm import ReArm, default_rearm, rearm_section
+from backup_rearm import ENTRY_SCRIPT_NAME, ReArm, default_rearm, rearm_section
 from backup_restore_checks import (
     EXTRAS_DIR,
     MEMORY_PREFIX,
@@ -142,6 +142,7 @@ def render_restore_doc(manifest: Manifest, *, rearm: "ReArm | None" = None) -> s
     pairs = zip(manifest.bundles, specs, strict=True)
     sections = [
         _intro(manifest),
+        _VERIFY_SECTION,
         *(
             _bundle_section(entry, entry_specs, first=index == 0)
             for index, (entry, entry_specs) in enumerate(pairs)
@@ -215,6 +216,29 @@ def _intro(manifest: Manifest) -> str:
             "```",
         ]
     )
+
+
+#: Points at --mode verify. A text block, never a run block: it needs this tool, and the
+#: document cannot vouch for itself, since whatever could rewrite it could rewrite this too.
+#: --destination is the snapshot's own parent, which verify canonicalizes as it does the
+#: snapshot, so the line works from a clone of the tool that holds no backup configuration.
+_VERIFY_SECTION = "\n".join(
+    [
+        "## Verify before you restore",
+        "",
+        "This document is inside the snapshot, so it cannot vouch for itself. On the",
+        "machine that made the snapshot, run verify first: it prints `verified:` and exits 0",
+        "only when the manifest matches what that machine recorded and every file matches",
+        "the manifest. Elsewhere it can only check the folder against its own manifest.",
+        "The command names the folder that holds this one as the destination, so it",
+        "needs no configuration from the checkout the tool sits in.",
+        "",
+        "```text",
+        f'python <path to {ENTRY_SCRIPT_NAME}> --mode verify --snapshot "$SNAPSHOT" '
+        '--destination "$(dirname -- "$SNAPSHOT")"',
+        "```",
+    ]
+)
 
 
 def _taken_by(manifest: Manifest) -> str:

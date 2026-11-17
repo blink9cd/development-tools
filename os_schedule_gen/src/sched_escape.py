@@ -109,7 +109,7 @@ def refuse_bad_task_name(task_name: str) -> None:
     r"""Raise ValueError unless *task_name* is a task path: ``\`` and job-name segments.
 
     Each segment between backslashes is held to :data:`JOB_NAME`, so a ``..`` segment, an
-    empty one, a space or markup is refused rather than handed to Task Scheduler, which
+    empty one, a space, or markup is refused rather than handed to Task Scheduler, which
     reads the path as a folder tree. ``\Maintenance\WeeklySweep`` is one such path.
     """
     segments = task_name.split("\\")

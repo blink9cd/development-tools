@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "development-tools"
-version = "0.2.2"
+version = "0.3.0"
 description = "Tools for working with a git workspace: a daily, verified backup of a checkout's un-pushed work to iCloud Drive"
 readme = "README.md"
 license = "AGPL-3.0-or-later"
@@ -21,8 +21,11 @@ dependencies = []
 
 [project.optional-dependencies]
 # The property tests in git_workspace_backup/tests/ and the vendored libraries' suites.
-# Tests only: nothing at runtime imports it.
-test = ["hypothesis==6.165.10"]
+# Tests only: nothing at runtime imports it. Pinned exactly with sortedcontainers, the one
+# dependency hypothesis installs on Python 3.12 and later (its exceptiongroup requirement
+# applies below 3.11 only), so an install resolves the same tree every time. Its license,
+# as read when pinned: Apache-2.0. Re-read the versions and the license on every bump.
+test = ["hypothesis==6.165.10", "sortedcontainers==2.4.0"]
 
 [tool.setuptools]
 # Deliberately empty. The tool is run directly and puts its sibling folders on sys.path,
@@ -73,7 +76,13 @@ mypy_path = [
   "$MYPY_CONFIG_FILE_DIR/os_schedule_gen/src",
   "$MYPY_CONFIG_FILE_DIR/atomic_write",
   "$MYPY_CONFIG_FILE_DIR/pyproject_config",
+  "$MYPY_CONFIG_FILE_DIR/run_lock",
+  "$MYPY_CONFIG_FILE_DIR/launchd_agent",
+  # ...and its tests/, from which the backup's launchd tests import the library's own
+  # scripted launchctl.
+  "$MYPY_CONFIG_FILE_DIR/launchd_agent/tests",
   "$MYPY_CONFIG_FILE_DIR/live_pid_guard",
+  "$MYPY_CONFIG_FILE_DIR/suite_select",
 ]
 
 [tool.coverage.run]

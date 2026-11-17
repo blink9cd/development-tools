@@ -60,11 +60,11 @@ if TYPE_CHECKING:
 # still imports os_schedule_gen alone.
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
-from sched_daily import DailySchedule, parse_daily_time  # noqa: E402,F401 - re-exported
+from sched_daily import DailySchedule, parse_daily_time  # noqa: F401 - re-exported
 
 # WeeklySchedule lives there too, and the host facts an installer needs (which backend,
 # which directory) with it.
-from sched_hosts import (  # noqa: E402,F401 - re-exported
+from sched_hosts import (  # noqa: F401 - re-exported
     BACKEND_CRON_EMIT,
     BACKEND_LAUNCHD,
     BACKEND_SYSTEMD,
@@ -74,11 +74,11 @@ from sched_hosts import (  # noqa: E402,F401 - re-exported
     select_backend,
     systemd_unit_dir,
 )
-from sched_weekly import DAYS, WeeklySchedule, parse_schedule  # noqa: E402,F401 - re-exported
+from sched_weekly import DAYS, WeeklySchedule, parse_schedule  # noqa: F401 - re-exported
 
 # The general Task Scheduler renderer and its triggers live in src/ too; build_task_xml
 # below is one call to it.
-from sched_task_xml import (  # noqa: E402,F401 - re-exported
+from sched_task_xml import (  # noqa: F401 - re-exported
     LOGON_TYPES,
     AtLogon,
     DailyAt,
@@ -89,7 +89,7 @@ from sched_task_xml import (  # noqa: E402,F401 - re-exported
 )
 
 # Each format's escape, and the one systemd value no escape can save, live there too.
-from sched_escape import (  # noqa: E402
+from sched_escape import (
     command_words,
     cron_quote,
     cron_word,

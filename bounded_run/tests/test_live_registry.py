@@ -89,7 +89,7 @@ class _DrainedProc:
         self.seen: tuple[int, ...] = ()
         self._fails = fails
 
-    def communicate(  # noqa: A002 - `input` mirrors Popen's parameter name
+    def communicate(
         self, input: str | None = None, timeout: float | None = None
     ) -> tuple[str, str]:
         """Note the registry's contents, then finish or fail as scripted."""

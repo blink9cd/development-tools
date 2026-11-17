@@ -17,6 +17,7 @@ from pathlib import Path
 import _cli_case as cc
 
 import backup_launchd
+import launchd_agent
 import os_schedule_gen
 import git_workspace_backup as wb
 
@@ -61,7 +62,7 @@ class RepoOptionTests(cc.CliCase):
             ("home-relative", str(home_relative), home),
         ):
             with self.subTest(label):
-                self.launchctl.prints = [backup_launchd.PRINT_ABSENT_RC, 0]
+                self.launchctl.prints = [launchd_agent.PRINT_ABSENT_RC, 0]
                 argv = ["--mode", "install", "--repo", raw]
                 self.assertEqual(self.main(*argv, host=host), 0, self.err.getvalue())
                 plist = backup_launchd.plist_path(host.home).read_bytes()
@@ -69,7 +70,7 @@ class RepoOptionTests(cc.CliCase):
                 self.assertEqual(args[-4:-2], ["--repo", str(self.tree.workspace)])
 
     def test_install_bakes_the_repository_and_the_agent_runs_with_it(self) -> None:
-        self.launchctl.prints = [backup_launchd.PRINT_ABSENT_RC, 0]
+        self.launchctl.prints = [launchd_agent.PRINT_ABSENT_RC, 0]
         argv = ["--mode", "install", "--repo", str(self.tree.workspace)]
         self.assertEqual(self.main(*argv, host=self.outside()), 0, self.err.getvalue())
         baked = self.installed_args()
@@ -94,7 +95,7 @@ class RepoOptionTests(cc.CliCase):
     def test_install_without_repo_writes_the_plist_it_always_wrote(self) -> None:
         # A reinstall of the live agent without --repo changes it by the pinned destination
         # alone: one option and its value, and not one byte more.
-        self.launchctl.prints = [backup_launchd.PRINT_ABSENT_RC, 0]
+        self.launchctl.prints = [launchd_agent.PRINT_ABSENT_RC, 0]
         self.assertEqual(self.main("--mode", "install"), 0)
         before_the_option = os_schedule_gen.build_launchd_plist(
             os_schedule_gen.DailySchedule(hour=6, minute=0),
@@ -113,7 +114,7 @@ class RepoOptionTests(cc.CliCase):
     def test_the_printed_status_command_judges_what_the_agent_backs_up(self) -> None:
         # Copied from a start outside every checkout, a status line without --repo would
         # judge the script's own folder, and exit 2 there.
-        self.launchctl.prints = [backup_launchd.PRINT_ABSENT_RC, 0]
+        self.launchctl.prints = [launchd_agent.PRINT_ABSENT_RC, 0]
         argv = ["--mode", "install", "--repo", str(self.tree.workspace)]
         self.assertEqual(self.main(*argv, host=self.outside()), 0, self.err.getvalue())
         [line] = [line for line in self.out.getvalue().splitlines() if STATUS in line]
@@ -146,11 +147,11 @@ class RepoOptionTests(cc.CliCase):
 
     def test_an_install_that_fails_names_no_repository(self) -> None:
         # Launchd never confirms the agent loaded, so no agent backs anything up.
-        self.launchctl.prints = [backup_launchd.PRINT_ABSENT_RC]
-        self.launchctl.settled = backup_launchd.PRINT_ABSENT_RC
+        self.launchctl.prints = [launchd_agent.PRINT_ABSENT_RC]
+        self.launchctl.settled = launchd_agent.PRINT_ABSENT_RC
         argv = ["--mode", "install", "--repo", str(self.tree.workspace)]
         self.assertEqual(self.main(*argv, host=self.outside()), 2)
-        self.assertIn("did not load", self.err.getvalue())
+        self.assertIn("still absent", self.err.getvalue())
         self.assertNotIn(BACKS_UP, self.out.getvalue())
 
     def test_a_script_in_a_linked_worktree_is_still_refused(self) -> None:
@@ -180,7 +181,7 @@ class RepoOptionTests(cc.CliCase):
 
     def test_uninstall_takes_repo_and_removes_the_one_agent(self) -> None:
         plist = self.write_plist()
-        self.launchctl.settled = backup_launchd.PRINT_ABSENT_RC
+        self.launchctl.settled = launchd_agent.PRINT_ABSENT_RC
         argv = ["--mode", "uninstall", "--repo", str(self.elsewhere / "any")]
         self.assertEqual(self.main(*argv, host=self.outside()), 0)
         self.assertFalse(plist.exists())

@@ -62,7 +62,7 @@ class _InterruptedProc:
         self.events: list[str] = []
         self._reap_expires = reap_expires
 
-    def communicate(  # noqa: A002 - `input` mirrors Popen's parameter name
+    def communicate(
         self, input: str | None = None, timeout: float | None = None
     ) -> tuple[str, str]:
         """The first call is interrupted; a later one is the reap, which may expire."""

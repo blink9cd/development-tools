@@ -36,14 +36,12 @@ NOT_STARTED_RC = 127
 GIT_TIMEOUT_S = 900.0
 MEMORY_SNAPSHOT_TIMEOUT_S = 300.0
 OSASCRIPT_TIMEOUT_S = 60.0
-LAUNCHCTL_TIMEOUT_S = 30.0
 
 #: osascript's executable, for every call site: the notification and the upload-state query.
-#: Absolute, as launchctl's is: the agent's PATH puts git's directory first, and a Homebrew
-#: git's directory is one its user can write, so a bare name could run a planted stand-in.
+#: Absolute, as launchd_agent runs launchctl: the agent's PATH puts git's directory first, and
+#: a Homebrew git's directory is one its user can write, so a bare name could run a planted
+#: stand-in.
 OSASCRIPT = "/usr/bin/osascript"
-#: launchctl's executable, for every call site: print, bootout and bootstrap.
-LAUNCHCTL = "/bin/launchctl"
 #: Ends osascript's own options, so each argument after it reaches the script as data.
 #: Measured: ``osascript -e <script> -x`` refuses ``-x`` as an illegal option and runs
 #: nothing, while ``-- -x`` hands ``-x`` to the script.

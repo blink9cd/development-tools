@@ -21,7 +21,7 @@ from backup_model import BundleEntry, FileEntry, Manifest, StashEntry, WorktreeH
 _HEAD = "a" * 40
 _CREATED = "2026-09-14T06:00:00+00:00"
 #: Characters that make what a terminal shows differ from what runs.
-_HIDDEN = {"escape": "\x1b", "backspace": "\x08", "bidi override": "‮"}
+_HIDDEN = {"escape": "\x1b", "backspace": "\x08", "bidi override": "\u202e"}
 #: The one field a tab may appear in.
 _STASH_MESSAGE = "stash message"
 

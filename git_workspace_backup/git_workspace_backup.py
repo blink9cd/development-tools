@@ -64,6 +64,7 @@ from backup_checkout import (  # noqa: E402 - same bootstrap
     repo_start,
 )
 from backup_agent_args import pinned_destination_problems  # noqa: E402 - same
+from backup_cli_options import unconsumed_options  # noqa: E402 - same bootstrap
 from backup_config import BackupConfig  # noqa: E402 - same bootstrap
 from backup_ledger import LedgerError, state_dir_for  # noqa: E402 - same bootstrap
 from backup_machine import MachineError, read_identity  # noqa: E402 - same bootstrap
@@ -86,6 +87,11 @@ from backup_run import (  # noqa: E402 - same bootstrap
     RunRequest,
     run_backup,
 )
+from backup_snapshot_verify import (  # noqa: E402 - same bootstrap
+    VerifyRequest,
+    snapshot_path,
+    verify_snapshot_folder,
+)
 
 #: What install, and its dry run, say last: the label is fixed, so there is one agent.
 BACKS_UP = (
@@ -101,20 +107,22 @@ _COMPANION_DOC = Path(__file__).with_suffix(".md").name
 EPILOG = (
     "Prerequisites: macOS; git on PATH; a [tool.workspace_backup] table in the nearest "
     "pyproject.toml at or above the primary checkout, naming a destination whose parent "
-    "folder exists (for iCloud Drive: signed in, with Drive turned on). "
-    "Without --repo, the repository backed up is the checkout this script sits in. "
+    "folder exists (for iCloud Drive: signed in, with Drive turned on); --mode verify with "
+    "--destination needs neither git nor that table. Without --repo, the repository "
+    "backed up is the checkout this script sits in. "
     "Run order: (1) --mode run --dry-run prints the plan and writes nothing; (2) --mode "
     "install loads the daily agent, its script in a primary checkout or, with --repo, "
     "anywhere outside a linked worktree; loading it starts a run "
     "unless today already has a complete snapshot; (3) --mode status, once that run has "
-    "finished. Only a launchd-started run that takes a snapshot shows launchd can run the "
-    "backup, and one that fails says why in its error log under "
+    "finished; (4) before a restore, --mode verify --snapshot on the machine that took it. "
+    "Only a launchd-started run that takes a snapshot shows launchd can run the backup, "
+    "and one that fails says why in its error log under "
     f"{_LOGS_SHOWN}. There is one agent per account: installing for another repository "
     "replaces it. --mode uninstall removes the agent and keeps every snapshot and all "
     "recorded state. Each option's help names the modes that use it; any other mode refuses "
     "it rather than ignoring it. "
-    "Exit codes: 0 = done, as asked. 1 = needs attention: the run, or the destination "
-    "status judged, has a problem, which is printed. 2 = could not run or judge. "
+    "Exit codes: 0 = done, as asked. 1 = needs attention: the run, status or verify "
+    "found a problem, which is printed. 2 = could not run or judge. "
     f"{_COMPANION_DOC}, beside this script, lists what each mode exits 1 and 2 for, and "
     "every problem status reports."
 )
@@ -183,7 +191,8 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         choices=MODES,
         help="run = take one snapshot; install / uninstall = add or remove the daily "
-        "LaunchAgent; status = judge the destination's health.",
+        "LaunchAgent; status = judge the destination's health; verify = check one snapshot "
+        "folder against its manifest and this machine's ledger.",
     )
     parser.add_argument(
         "--if-due",
@@ -207,9 +216,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--destination",
         default=None,
-        help="run, status and install: the destination directory, absolute or starting "
-        "with ~/, in place of the configured one; the configured destination when "
-        "unset. Install pins whichever it is into the agent.",
+        help="run, status, install and verify: the destination directory, absolute or "
+        "starting with ~/, in place of the configured one; the configured destination "
+        "when unset. Install pins whichever it is into the agent.",
     )
     parser.add_argument(
         "--dry-run",
@@ -220,9 +229,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--repo",
         default=None,
-        help="every mode: the repository to back up, absolute or starting with ~/; a "
-        "linked worktree means its primary checkout, and install bakes it into the agent. "
-        "When unset, the checkout this script sits in is backed up.",
+        help="every mode but verify: the repository to back up, absolute or starting with "
+        "~/; a linked worktree means its primary checkout, and install bakes it into the "
+        "agent. When unset, the checkout this script sits in is backed up.",
+    )
+    parser.add_argument(
+        "--snapshot",
+        default=None,
+        help="verify only, and required there: the snapshot folder to check, absolute or "
+        "starting with ~/, directly in the destination.",
     )
     return parser
 
@@ -232,9 +247,9 @@ def main(argv: "Sequence[str] | None", host: Host) -> int:
     stdio_utf8.force_utf8_streams(sys.stdout, sys.stderr)
     parser = build_parser()
     args = parser.parse_args(argv)
-    unconsumed = _unconsumed_options(parser, args)
+    row = _consumer_row(args)
+    unconsumed = unconsumed_options(parser, args, CONSUMED_OPTIONS[row])
     if unconsumed:
-        row = _consumer_row(args)
         return _refuse(host, f"--mode {row} does not use {', '.join(unconsumed)}")
     if host.platform != DARWIN:
         return _refuse(host, f"macOS only; this platform is {host.platform}")
@@ -249,34 +264,6 @@ def _consumer_row(args: argparse.Namespace) -> str:
     if args.mode == _RUN_MODE and bool(args.dry_run):
         return RUN_PLAN_ROW
     return str(args.mode)
-
-
-def _unconsumed_options(
-    parser: argparse.ArgumentParser, args: argparse.Namespace
-) -> list[str]:
-    """Each option given a value other than its default that its row does not consume.
-
-    Compared with the default rather than tracked as "given", so an explicit value equal to
-    the default, which changes nothing, passes.
-    """
-    consumed = CONSUMED_OPTIONS[_consumer_row(args)]
-    return [
-        action.option_strings[0]
-        for action in _checkable_actions(parser)
-        if action.dest not in consumed
-        and getattr(args, action.dest) != parser.get_default(action.dest)
-    ]
-
-
-def _checkable_actions(parser: argparse.ArgumentParser) -> list[argparse.Action]:
-    """Every option *parser* defines but the unchecked ones, read from the parser itself.
-
-    Read rather than listed, so an option added later is checked too, and refused by every
-    row until one names it. argparse offers no public list of a parser's actions;
-    ``_actions`` is where every ``add_argument`` has put them since argparse joined the
-    standard library.
-    """
-    return [action for action in parser._actions if action.dest not in _UNCHECKED_DESTS]
 
 
 def _run_mode(args: argparse.Namespace, host: Host) -> int:
@@ -341,17 +328,11 @@ def _install_mode(args: argparse.Namespace, host: Host) -> int:
         script=host.script,
         schedule=schedule,
         git_path=git_path,
-        uid=host.uid,
         destination=config.destination,
         repo=roots.workspace if named else None,
     )
     code = backup_launchd.install(
-        spec,
-        run=host.run,
-        waiter=host.waiter,
-        dry_run=bool(args.dry_run),
-        out=host.out,
-        err=host.err,
+        spec, _launchctl(host), dry_run=bool(args.dry_run), out=host.out, err=host.err
     )
     if code == EXIT_OK:
         print(BACKS_UP.format(repo=roots.workspace), file=host.out)
@@ -367,13 +348,7 @@ def _uninstall_mode(args: argparse.Namespace, host: Host) -> int:
     named = named_repo(args.repo, home=host.home)
     refuse_during_a_run(_state_base(host), host.err, uninstalling=True)
     return backup_launchd.uninstall(
-        host.home,
-        host.uid,
-        run=host.run,
-        waiter=host.waiter,
-        out=host.out,
-        err=host.err,
-        named_repo=named,
+        host.home, _launchctl(host), out=host.out, err=host.err, named_repo=named
     )
 
 
@@ -403,6 +378,17 @@ def _status_mode(args: argparse.Namespace, host: Host) -> int:
     for line in verdict.lines:
         print(line, file=stream)
     return verdict.code
+
+
+def _verify_mode(args: argparse.Namespace, host: Host) -> int:
+    """One snapshot folder against its manifest and ledger; --destination reads no checkout."""
+    snapshot = snapshot_path(args.snapshot, host.home)
+    _guard_state_base(host, create=False)
+    destination = destination_override(args.destination, host.home)
+    if destination is None:
+        destination = _checkout_and_config(args, host)[1].destination
+    request = VerifyRequest(snapshot, destination, _state_base(host))
+    return verify_snapshot_folder(request, out=host.out, err=host.err)
 
 
 def _configured(args: argparse.Namespace, host: Host) -> tuple[Roots, BackupConfig]:
@@ -441,7 +427,12 @@ def _agent_state(host: Host) -> str:
     """
     if not backup_launchd.plist_path(host.home).exists():
         return backup_status.AGENT_ABSENT
-    return backup_launchd.agent_state(host.uid, run=host.run)
+    return backup_launchd.agent_state(_launchctl(host))
+
+
+def _launchctl(host: Host) -> backup_launchd.Launchctl:
+    """The launchd seam *host* gives launchd_agent: its runner, uid, clock and sleep."""
+    return backup_launchd.host_launchctl(host.run, host.uid, host.waiter)
 
 
 def _guard_state_base(host: Host, *, create: bool) -> None:
@@ -470,6 +461,7 @@ _HANDLERS: "dict[str, _Handler]" = {
     "install": _install_mode,
     "uninstall": _uninstall_mode,
     "status": _status_mode,
+    "verify": _verify_mode,
 }
 #: The modes --mode accepts: the handler table's own keys, so neither can name one alone.
 MODES = tuple(_HANDLERS)
@@ -489,9 +481,9 @@ CONSUMED_OPTIONS: "dict[str, frozenset[str]]" = {
     # only compared with the one it was backing up.
     "uninstall": frozenset({"repo"}),
     "status": frozenset({"keep", "destination", "repo"}),
+    # Verify reads the configuration only for the destination, from the script's checkout.
+    "verify": frozenset({"snapshot", "destination"}),
 }
-#: Parser dests no row names: --help exits while parsing, and --mode selects the row.
-_UNCHECKED_DESTS = frozenset({"help", "mode"})
 
 
 if __name__ == "__main__":  # pragma: no cover - entry point; tests drive main()

@@ -23,12 +23,12 @@ import stdio_utf8  # noqa: E402 - import follows the sys.path bootstrap above
 # A deterministic Hypothesis run, held in the profile so an exploring campaign runner
 # can apply its own settings (see test_escaping.py).
 settings.register_profile(
-    "fuzz_gate_deterministic",
+    "deterministic",
     derandomize=True,
     deadline=None,
     suppress_health_check=[HealthCheck.too_slow],
 )
-settings.load_profile("fuzz_gate_deterministic")
+settings.load_profile("deterministic")
 
 #: Every code point the function must escape, written out here rather than imported,
 #: so the test is a second statement of the set and not the subject read back.
@@ -60,7 +60,7 @@ class TestSpellUnsafe(unittest.TestCase):
     """Each control and layout character prints as an escape; nothing else changes."""
 
     def test_each_control_character_prints_as_two_hex_digits(self) -> None:
-        """C0 (tab and newline among them), DEL and C1: ``\\xNN``, never ``\\t``."""
+        """C0 (tab and newline among them), DEL, and C1: ``\\xNN``, never ``\\t``."""
         cases = {
             "\x00": "\\x00",
             "\t": "\\x09",
@@ -99,10 +99,12 @@ class TestSpellUnsafe(unittest.TestCase):
 
     def test_a_right_to_left_override_prints_escaped(self) -> None:
         """``01 <U+202E>gpj.mp3`` displays as an image's name; the escape shows it."""
-        self.assertEqual(stdio_utf8.spell_unsafe("01 ‮gpj.mp3"), "01 \\u202egpj.mp3")
+        self.assertEqual(
+            stdio_utf8.spell_unsafe("01 \u202egpj.mp3"), "01 \\u202egpj.mp3"
+        )
 
     def test_every_other_character_prints_as_it_is(self) -> None:
-        """Accents, CJK, emoji, a no-break space and a backslash are left alone."""
+        """Accents, CJK, emoji, a no-break space, and a backslash are left alone."""
         text = " ~\xa0é灯台🌊 café \\x1b"
         self.assertEqual(stdio_utf8.spell_unsafe(text), text)
 

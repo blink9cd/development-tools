@@ -38,6 +38,10 @@ What to look for:
 
 - The opening line, naming the machine `fixture-mac` beside `Created`, then `complete: yes`,
   from the manifest's `machine` and `complete`.
+- A `Verify before you restore` section next, saying the document cannot vouch for itself and
+  showing, in a `text` fence, the
+  `--mode verify --snapshot "$SNAPSHOT" --destination "$(dirname -- "$SNAPSHOT")"` line to run
+  first on the machine that made the snapshot.
 - One `sh` block for each bundle, then one for the files.
 - Every `sh` block first stops unless `RESTORE_ROOT` and `SNAPSHOT` are absolute, and the first
   block also unless `RESTORE_ROOT` is an existing, readable, empty directory.

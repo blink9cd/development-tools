@@ -8,19 +8,39 @@ here, so they are measured under this one coverage run.
 An empty ``unittest.TestLoader.discover`` is a passing run (``Ran 0 tests``, exit 0), so
 each grouped file is floored separately: a renamed suite dir, a pattern that stops matching,
 or an import that quietly fails would otherwise gate nothing while reporting green.
+
+A bare run loads everything. This file declares ``SPLIT_SUITE_BY_FILE``, so a runner that
+splits suites may instead run each grouped file as its own task, and these guards as one more,
+through the selection ``suite_select`` owns, then combine their coverage.
 """
 
 from __future__ import annotations
 
+import os
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 #: The grouped-suite dir's name, spelled here: the one library that owns it elsewhere
 #: does not ship with this project, and vendoring it for one constant would not pay.
 _SUITE_DIR_NAME = "tests"
 _HERE = Path(__file__).resolve().parent
 _SUITE_DIR = _HERE / _SUITE_DIR_NAME
+
+# The shared suite-selection library, which owns the names a splitting runner shares with
+# ``load_tests`` below: a folder beside this tool's own, named rather than searched for, so a
+# same-named folder above the clone is never imported in its place, and put just after this
+# folder, ahead of every installed distribution, so none of the same name can shadow it.
+sys.path.insert(1, str(_HERE.parent / "suite_select"))
+
+import suite_select  # noqa: E402 - import follows the sys.path bootstrap above
+
+# Opt in to a splitting runner running each grouped file as its own task: one serial run of
+# all of them is most of this folder's test time. Read by AST (suite_select owns the name),
+# never by import.
+SPLIT_SUITE_BY_FILE = True
+
 # The suites import `git_workspace_backup` and `_fixtures` by plain name, so both dirs
 # must be importable however this file was launched. _HERE is already sys.path[0] when
 # run as a script, but not when something else imports this module.
@@ -46,15 +66,17 @@ _MIN_TESTS_BY_FILE: dict[str, int] = {
     "test_cli_options.py": 5,
     "test_cli_repo.py": 10,
     "test_cli_status.py": 16,
-    "test_cli_uninstall.py": 9,
+    "test_cli_uninstall.py": 11,
+    "test_cli_verify.py": 8,
     "test_companion_doc.py": 2,
     "test_config_roots.py": 18,
     "test_drift.py": 13,
+    "test_hash_bounded.py": 13,
     "test_icloud.py": 14,
-    "test_launchd.py": 18,
+    "test_launchd.py": 19,
     "test_machine.py": 16,
     "test_notify.py": 5,
-    "test_proc_fs.py": 26,
+    "test_proc_fs.py": 22,
     "test_promote.py": 24,
     "test_properties.py": 13,
     "test_properties_bundle.py": 5,
@@ -76,10 +98,12 @@ _MIN_TESTS_BY_FILE: dict[str, int] = {
     "test_restore_second_machine.py": 28,
     "test_restore_stash.py": 4,
     "test_roots_layouts.py": 4,
-    "test_run.py": 14,
+    "test_run.py": 15,
     "test_run_guards.py": 22,
     "test_run_machine.py": 11,
     "test_samples.py": 3,
+    "test_snapshot_verify.py": 42,
+    "test_snapshot_verify_hardening.py": 14,
     "test_state_base.py": 15,
     "test_status.py": 17,
     "test_status_gather.py": 16,
@@ -96,7 +120,7 @@ _MIN_TESTS_BY_FILE: dict[str, int] = {
 # when a guard is deleted, so it would pass for exactly the deletion it exists to catch.
 # Exact rather than a floor, for the same reason the total was dropped: under ``>=`` an
 # added guard becomes room a later deletion can hide in.
-_OWN_GUARD_TESTS = 2
+_OWN_GUARD_TESTS = 3
 
 
 def _discovered() -> unittest.TestSuite:
@@ -124,6 +148,13 @@ def _tests_by_module(suite: unittest.TestSuite) -> dict[str, int]:
     return counts
 
 
+def _load_this_module() -> dict[str, int]:
+    """Load this module as a bare run does, through ``load_tests``, per file."""
+    return _tests_by_module(
+        unittest.TestLoader().loadTestsFromModule(sys.modules[__name__])
+    )
+
+
 class AggregatorReachesTheGroupedSuitesTest(unittest.TestCase):
     """Nothing but this file runs the suites below, so prove it actually found them."""
 
@@ -142,9 +173,11 @@ class AggregatorReachesTheGroupedSuitesTest(unittest.TestCase):
         (``__main__`` when run bare, the module name under a runner) because a class
         takes its ``__module__`` from the module that defines it.
         """
-        loaded = _tests_by_module(
-            unittest.TestLoader().loadTestsFromModule(sys.modules[__name__])
-        )
+        # Run inside a splitting runner's guard task, the selection would hide the fold-in
+        # this guard exists to see, so it is cleared for this check alone.
+        with mock.patch.dict(os.environ):
+            os.environ.pop(suite_select.SELECT_ENV, None)
+            loaded = _load_this_module()
         own_found = loaded.pop(f"{__name__}.py", 0)
         self.assertEqual(
             own_found,
@@ -165,6 +198,21 @@ class AggregatorReachesTheGroupedSuitesTest(unittest.TestCase):
             f"least {grouped_floor}: load_tests may have been removed or renamed, "
             f"silently dropping a tests/ suite from the real run",
         )
+
+    def test_split_is_declared_and_load_tests_honors_the_selection(self) -> None:
+        """Guard the per-file split: the marker is set and each task loads only its share.
+
+        A ``load_tests`` that ignored the selection would run the whole suite in every task,
+        and one that dropped the guards would leave the guard task empty.
+        """
+        source = Path(__file__).read_text(encoding="utf-8")
+        self.assertTrue(suite_select.declares_split(source))
+        one_file = "test_notify.py"
+        with mock.patch.dict(os.environ, {suite_select.SELECT_ENV: one_file}):
+            self.assertEqual(_load_this_module().keys(), {one_file})
+        guards = {suite_select.SELECT_ENV: suite_select.GUARDS_ONLY}
+        with mock.patch.dict(os.environ, guards):
+            self.assertEqual(_load_this_module(), {f"{__name__}.py": _OWN_GUARD_TESTS})
 
     def test_grouped_suite_meets_its_own_per_file_floor(self) -> None:
         """Fail when one grouped file has lost tests, and when a new file arrives with no
@@ -195,9 +243,12 @@ def load_tests(
     standard_tests: unittest.TestSuite,
     pattern: str | None,
 ) -> unittest.TestSuite:
-    """unittest protocol hook: run the grouped suites alongside the check above."""
-    standard_tests.addTests(_discovered())
-    return standard_tests
+    """unittest protocol hook: fold in the grouped suites this task selected.
+
+    Unset (a bare run), that is every grouped suite beside this file's guards; under
+    a splitting runner it is one grouped file, or the guards alone.
+    """
+    return suite_select.fold_selected(standard_tests, loader, _SUITE_DIR, os.environ)
 
 
 if __name__ == "__main__":

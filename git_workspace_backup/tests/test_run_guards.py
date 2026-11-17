@@ -31,8 +31,9 @@ import backup_proc
 import backup_run as brun
 import backup_seal as seal
 import backup_staging as bstage
+import run_lock
 from backup_build import BuildResult
-from backup_fs import RunLock, sha256_bytes
+from backup_fs import sha256_bytes
 from backup_ledger import LAST_RUN_NAME, STATE_DIR_NAME, load_ledger
 from backup_manifest import MANIFEST_NAME, manifest_to_json, parse_manifest
 from backup_model import (
@@ -371,8 +372,8 @@ class ReportingTests(RunCase):
     def test_a_held_lock_writes_nothing_so_an_unwritable_state_posts_nothing(
         self,
     ) -> None:
-        holder = RunLock(self.base / brun.LOCK_NAME)
-        self.assertTrue(holder.acquire())
+        holder = run_lock.acquire(self.base / brun.LOCK_NAME, private=True)
+        assert holder is not None
         self.addCleanup(holder.release)
         (self.base / STATE_DIR_NAME).write_text(
             "a file, not a directory", encoding="utf-8", newline="\n"
@@ -412,8 +413,8 @@ class ReportingTests(RunCase):
         with mock.patch.object(brun, "build_snapshot", side_effect=KeyboardInterrupt):
             with self.assertRaises(KeyboardInterrupt):
                 self.run_backup(self.request())
-        after = RunLock(self.base / brun.LOCK_NAME)
-        self.assertTrue(after.acquire())
+        after = run_lock.acquire(self.base / brun.LOCK_NAME, private=True)
+        assert after is not None
         after.release()
 
     def test_a_defect_is_recorded_and_posted_even_when_stderr_cannot_be_written(

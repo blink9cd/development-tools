@@ -11,13 +11,16 @@ from __future__ import annotations
 
 import plistlib
 import unittest
+from collections.abc import Sequence
+from dataclasses import replace
+from pathlib import Path
 
 import _cli_case as cc
 
 import backup_agent_args
 import backup_launchd
 import backup_notify
-import backup_proc
+import launchd_agent
 
 #: What uninstall says about the repository the removed agent backed up.
 WAS_BACKING_UP = "The removed agent was backing up"
@@ -30,7 +33,7 @@ CANNOT_TELL = "cannot tell which repository the removed agent was backing up"
 class UninstallReportTests(cc.CliCase):
     def uninstall(self, *extra: str) -> int:
         """Uninstall, with launchd confirming the agent gone."""
-        self.launchctl.settled = backup_launchd.PRINT_ABSENT_RC
+        self.launchctl.settled = launchd_agent.PRINT_ABSENT_RC
         return self.main("--mode", "uninstall", *extra)
 
     def named_agent(self, repo: str) -> None:
@@ -121,14 +124,36 @@ class UninstallReportTests(cc.CliCase):
 class SystemToolPathTests(cc.CliCase):
     def test_launchctl_and_osascript_run_by_absolute_path(self) -> None:
         # The agent's PATH puts git's directory first, which Homebrew makes user-writable.
-        self.assertEqual(backup_proc.LAUNCHCTL, "/bin/launchctl")
-        self.assertEqual(backup_proc.OSASCRIPT, "/usr/bin/osascript")
-        self.launchctl.prints = [backup_launchd.PRINT_ABSENT_RC, 0]
+        self.launchctl.prints = [launchd_agent.PRINT_ABSENT_RC, 0]
         self.assertEqual(self.main("--mode", "install"), 0, self.err.getvalue())
         self.assertEqual({argv[0] for argv in self.launchctl.argvs}, {"/bin/launchctl"})
         self.assertTrue(backup_notify.notify("t", "m", run=self.runner))
         notified = [call for call in self.runner.calls if call[-2:] == ["t", "m"]]
         self.assertEqual([call[0] for call in notified], ["/usr/bin/osascript"])
+
+    def test_every_launchctl_call_carries_launchd_agents_own_bound(self) -> None:
+        bounds: list[float] = []
+        runner = self.fake_runner()
+
+        def run(
+            argv: Sequence[str], cwd: "Path | None", timeout: float
+        ) -> "tuple[int, str, str]":
+            if Path(argv[0]).name == "launchctl":
+                bounds.append(timeout)
+            return runner(argv, cwd, timeout)
+
+        self.launchctl.prints = [launchd_agent.PRINT_ABSENT_RC, 0]
+        host = replace(self.host(runner), run=run)
+        self.assertEqual(self.main("--mode", "install", host=host), 0)
+        self.assertEqual(bounds, [launchd_agent.LAUNCHCTL_TIMEOUT_S] * 4)
+
+    def test_an_unknown_launchd_answer_is_launchd_agents_error_on_one_line(
+        self,
+    ) -> None:
+        self.launchctl.settled = 5
+        self.assertEqual(self.main("--mode", "install"), 2)
+        self.assert_one_error_line("answered unknown (exit 5: fixture print 5)")
+        self.assertIn("re-running install recovers", self.err.getvalue())
 
 
 if __name__ == "__main__":

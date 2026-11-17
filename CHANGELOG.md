@@ -2,6 +2,66 @@
 
 Notable changes to this project, newest first.
 
+## 0.3.0 - 2026-11-17
+
+### Added
+
+- `git_workspace_backup --mode verify --snapshot DIR` checks one snapshot folder in the
+  destination. The manifest must hash to the sha256 this machine's ledger recorded for
+  that snapshot, and every file the manifest lists, `RESTORE.md` included, must match its
+  sha256 and size; an unlisted file fails it, except a `.DS_Store`, which is noted, and an
+  unlisted folder is reported once, not looked inside. A file whose size is not its
+  entry's is reported changed without being read, and an `.icloud` placeholder is left
+  unjudged only while its file is missing. Every output line escapes the characters a
+  terminal would act on in a name, and a manifest name that cannot be encoded is refused
+  with exit 2, never a traceback. Success prints `verified: <name> (<n> files)` and exits 0. A folder the ledger has no
+  entry for is checked against its own manifest but never verifies, since nothing then
+  vouches for the manifest. A file iCloud has offloaded, or one whose read stalls, is
+  reported and left unjudged rather than waited on. It takes `--destination` too, and
+  then reads neither the checkout nor its configuration. The restore steps now start
+  with it, and the verify command in each snapshot's `RESTORE.md` names `--destination`,
+  so it works from another clone. See "Verifying a snapshot" in `git_workspace_backup.md`.
+- The bundled `atomic_write` library gains `create_bytes`, which makes a file that must
+  never be written over: it hard-links a finished staging file into place, so of two
+  writers racing to create the file exactly one wins and the other gets
+  `FileExistsError`. It needs a file system with hard links. Its default mode is `0o644`,
+  so a secret must pass `mode=0o600`.
+- The bundled `atomic_write` library gains `read_bytes_nofollow`, which reads only the
+  regular file a path itself names: it refuses a symlink (or, on Windows, a reparse
+  point), a non-file, a file swapped in between its check and its open, and a file over
+  `max_bytes`, each as a `ReadRefused`. `atomic_write.md` states what it does not
+  guard against.
+- Newly bundled: `run_lock` and `launchd_agent`, which the backup now uses, and
+  `suite_select`, which its test runner uses. `launchd_agent` refuses a label that could
+  name another service target, a `/` or a leading `-` in it, before `launchctl` runs and
+  before any plist is written.
+
+### Changed
+
+- The backup's run lock is the bundled `run_lock` library's, taken and probed with
+  `private=True`: a symlink at its path, or a lock file that is not a regular file of
+  this user's with a single link, is refused, and a run creates it `0600`, in a `0700`
+  folder when it has to make one, refusing anything else planted where that folder goes.
+- `install` and `uninstall` load, unload, and read the backup's LaunchAgent through the
+  bundled `launchd_agent` library. The plist is written before anything is unloaded, and
+  every failure, a `launchctl` that cannot be run included, is one `ERROR:` line naming
+  what launchd answered, with exit 2, never a traceback.
+- `atomic_write` creates its staging file `0600` when the file it publishes has a mode to
+  carry, so the bytes are never readable more widely on disk than the published file.
+- `bounded_run.md` records that the Windows job-object path, its three live tests
+  included, now passes on a Windows runner at 100% branch coverage, where it said before
+  that the path had not yet run on Windows.
+- Tests and comments only otherwise: the property tests load a Hypothesis profile
+  renamed `deterministic`, invisible characters in tests are written as escapes, unused
+  `noqa` comments are removed, and comments and docstrings gain serial commas.
+
+### Fixed
+
+- The bundled `pyproject_config` reports a hostile `pyproject.toml` as a `ConfigError`
+  rather than a traceback: a document nested too deeply for the TOML parser, and a
+  configured entry holding a NUL, among them. An entry that cannot be resolved is named
+  by its 1-based position, never by its value.
+
 ## 0.2.2 - 2026-11-10
 
 ### Changed

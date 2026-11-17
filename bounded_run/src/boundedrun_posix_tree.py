@@ -64,7 +64,7 @@ _PS_FIELDS = 4
 _REAP_GRACE_SECONDS = 1.0
 
 #: Leading STAT letters of a process that can no longer fork: stopped (``T``; Linux's ``t`` is a
-#: tracing stop), a zombie (``Z``) or dead (Linux's ``X``).
+#: tracing stop), a zombie (``Z``), or dead (Linux's ``X``).
 _INERT_STATES = frozenset("TtZX")
 
 #: The lowest group id this module will ever signal. ``killpg(0, ...)`` addresses the caller's
@@ -74,7 +74,7 @@ _MIN_SIGNALABLE_GROUP = 2
 
 
 class ProcessRow(NamedTuple):
-    """One process as a snapshot shows it: its pid, parent, group and STAT column."""
+    """One process as a snapshot shows it: its pid, parent, group, and STAT column."""
 
     pid: int
     ppid: int
@@ -280,7 +280,7 @@ def _abandon_overdue(proc: subprocess.Popen[str]) -> None:
 
 
 def kill_tree_posix(pid: int, timeout: float) -> None:  # pragma: only-on posix
-    """Freeze, walk and kill the tree *pid* leads, with the real signals and ``ps``.
+    """Freeze, walk, and kill the tree *pid* leads, with the real signals and ``ps``.
 
     POSIX only: on Windows ``kill_tree`` kills through a job object and never calls this.
     """

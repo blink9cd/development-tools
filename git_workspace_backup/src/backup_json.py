@@ -15,6 +15,7 @@ them, which status and the restore document's checks share.
 from __future__ import annotations
 
 import json
+import os
 import unicodedata
 from collections.abc import Callable, Mapping
 from typing import TypeVar
@@ -101,10 +102,20 @@ def apfs_name_key(name: str) -> str:
 
 
 def relative_posix_name(obj: dict[str, object], key: str) -> str:
-    """The string at *key*, which must satisfy :func:`is_safe_relative_name`."""
+    r"""The string at *key*: a :func:`is_safe_relative_name` the filesystem can encode.
+
+    JSON can spell a lone surrogate (``"\ud800"``) that no file name holds, and opening one
+    raises UnicodeEncodeError rather than OSError, so it is refused here, as a record this
+    tool never wrote. A surrogate ``os.fsdecode`` made from an undecodable byte encodes back
+    and is kept.
+    """
     name = get_str(obj, key)
     if not is_safe_relative_name(name):
         raise ShapeError(f"{key} is not a safe relative name: {name!r}")
+    try:
+        os.fsencode(name)
+    except UnicodeEncodeError:
+        raise ShapeError(f"{key} is no name a filesystem can hold: {name!r}") from None
     return name
 
 
